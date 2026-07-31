@@ -58,6 +58,9 @@ function drawEmpPage(){
         ? '<span class="tag t-gray">ลาออก</span>'
         : '<span class="tag t-green">ทำงานอยู่</span>')+'</td>'+
       '<td><span class="tag '+acc.cls+'" title="'+esc(acc.tip)+'">'+acc.label+'</span>'+
+        (e.webauthnExempt
+          ? ' <span class="tag t-orange" title="ยกเว้นการยืนยันตัวตนด้วยอุปกรณ์ตอนลงเวลา">ยกเว้น passkey</span>'
+          : '')+
         (e.email?'<div style="color:var(--muted);font-size:11.5px;margin-top:3px">'+esc(e.email)+'</div>':'')+'</td>'+
       '<td class="act">'+
         (e.email
@@ -295,10 +298,55 @@ function editEmp(empId){
         opt2([['active','ทำงานอยู่'],['inactive','ลาออก / พ้นสภาพ']],e.status||'active')+'</select>')+
    '</div>'+
 
+   /* ---------- 5. การยืนยันตัวตนตอนลงเวลา ---------- */
+   '<div class="fsec">การยืนยันตัวตนตอนลงเวลา</div>'+
+   '<label class="ckline"><input type="checkbox" id="e_waex"'+(e.webauthnExempt?' checked':'')+'>'+
+     '<span>ยกเว้นไม่ต้องยืนยันตัวตนด้วยอุปกรณ์'+
+     '<div class="cksub">ปกติพนักงานต้องปลดล็อกด้วย Face ID / ลายนิ้วมือ / PIN ของเครื่อง '+
+     'ทุกครั้งที่เช็คอิน-เอาท์ ติ๊กช่องนี้เฉพาะเครื่องที่ทำไม่ได้จริง ๆ '+
+     '(เช่น ไม่มีระบบล็อกหน้าจอ หรือเบราว์เซอร์ไม่รองรับ) — <b>ความปลอดภัยจะลดลง '+
+     'เพราะฝากคนอื่นเช็คอินแทนได้</b></div></span></label>'+
+   (empId
+     ? '<div style="font-size:13px;color:var(--muted);margin-bottom:6px">อุปกรณ์ที่ผูกไว้</div>'+
+       '<div id="dev_list" class="assign-list" style="max-height:180px"><div class="empty" style="padding:14px">กำลังโหลด...</div></div>'
+     : '<div class="cksub">พนักงานจะผูกอุปกรณ์เองตอนเข้าใช้งานครั้งแรก</div>')+
+
    '<div class="actions">'+
      '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
      '<button class="btn btn-dark" onclick="saveEmp(\''+(empId||'')+'\')">'+(empId?'บันทึก':'สร้างพนักงาน')+'</button>'+
    '</div>', true);
+
+  if(empId) loadDevices(empId);
+}
+
+/* ---- อุปกรณ์ (passkey) ที่พนักงานผูกไว้ ---- */
+function loadDevices(empId){
+  run('listEmployeeDevices',empId).then(function(list){
+    var el=$('dev_list'); if(!el) return;
+    if(!list.length){
+      el.innerHTML='<div class="empty" style="padding:14px">ยังไม่ได้ผูกอุปกรณ์ — '+
+        'พนักงานจะถูกขอให้ผูกเองตอนเข้าใช้งานครั้งแรก</div>';
+      return;
+    }
+    el.innerHTML=list.map(function(d){
+      return '<div class="assign-row">'+
+        '<span style="color:var(--muted)">'+svgI('user',{size:17})+'</span>'+
+        '<div class="an"><b>'+esc(d.deviceName||'อุปกรณ์')+'</b>'+
+          '<div class="ab">ผูกเมื่อ '+fmtStamp(d.createdAt)+
+          (d.lastUsedAt?' · ใช้ล่าสุด '+fmtStamp(d.lastUsedAt):' · ยังไม่เคยใช้')+'</div></div>'+
+        '<span class="btn btn-sm btn-red" onclick="revokeDevice(\''+d.credentialId+'\',\''+empId+'\')">ปลด</span>'+
+      '</div>';
+    }).join('');
+  }).catch(function(e){
+    var el=$('dev_list'); if(el) el.innerHTML='<div class="empty" style="padding:14px">โหลดไม่สำเร็จ: '+esc(e.message)+'</div>';
+  });
+}
+
+function revokeDevice(credentialId, empId){
+  if(!confirm('ปลดอุปกรณ์นี้?\n\nพนักงานจะต้องผูกอุปกรณ์ใหม่ตอนเช็คอินครั้งถัดไป'))return;
+  run('revokeEmployeeDevice',credentialId).then(function(){
+    toast('ปลดอุปกรณ์แล้ว'); loadDevices(empId);
+  }).catch(function(e){toast('ผิดพลาด: '+e.message);});
 }
 
 /**
@@ -345,6 +393,7 @@ function saveEmp(empId){
     startDate:$('e_start').value,
     role:$('e_role').value,
     status:$('e_status').value,
+    webauthnExempt:$('e_waex').checked,
     photo:_empPhoto
   };
   if(!emp.name){toast('กรุณากรอกชื่อ');return;}

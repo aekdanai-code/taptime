@@ -658,6 +658,44 @@ async function t(name, fn) {
     assert.ok(h.includes("mail:'<rect"), 'ขาดไอคอน mail');
   });
 
+  await t('หน้าจัดการพนักงาน: มี UI ยกเว้น passkey + จัดการอุปกรณ์', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['e_waex', 'webauthnExempt', 'loadDevices(', 'revokeDevice(',
+     "run('listEmployeeDevices'", "run('revokeEmployeeDevice'"]
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    assert.ok(h.includes('ยกเว้นไม่ต้องยืนยันตัวตนด้วยอุปกรณ์'), 'ขาด label ของ checkbox');
+    assert.ok(h.includes('ความปลอดภัยจะลดลง'), 'ควรเตือนผลกระทบด้านความปลอดภัย');
+    assert.ok(h.includes('ยกเว้น passkey'), 'ตารางควรแสดงป้ายว่าถูกยกเว้น');
+  });
+
+  await t('ข้อความแนะนำบอกว่า PIN/ล็อกหน้าจอก็ใช้ได้ (ไม่ใช่แค่ชีวมิติ)', () => {
+    const emp = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(/PIN/.test(emp), 'ควรบอกว่าใช้ PIN ได้');
+    assert.ok(/ล็อกหน้าจอ/.test(emp), 'ควรแนะนำให้ตั้งล็อกหน้าจอ');
+    assert.ok(/LINE|Facebook/.test(emp), 'ควรเตือนเรื่องเบราว์เซอร์ในแอป');
+  });
+
+  await t('setWebauthnExempt / จัดการอุปกรณ์ เป็นสิทธิ์แอดมินเท่านั้น', () => {
+    const rpc2 = require(path.join(LIB, 'rpc'));
+    ['setWebauthnExempt', 'listEmployeeDevices', 'revokeEmployeeDevice'].forEach((fn) => {
+      assert.ok(typeof rpc2.REGISTRY[fn] === 'function', 'ไม่มีใน REGISTRY: ' + fn);
+      assert.ok(rpc2.ADMIN_FNS.has(fn), fn + ' ต้องเป็นสิทธิ์แอดมิน');
+      assert.ok(!rpc2.EMPLOYEE_FNS.has(fn), fn + ' พนักงานต้องเรียกไม่ได้');
+    });
+  });
+
+  await t('บันทึก webauthnExempt ผ่าน saveEmployee ได้', async () => {
+    const r = await employees.saveEmployee({
+      name: 'ทดสอบยกเว้น', status: 'active', webauthnExempt: true,
+    });
+    const row = fake._data.profiles.find((x) => x.empId === r.empId);
+    assert.strictEqual(row.webauthnExempt, true);
+    await employees.saveEmployee({ empId: r.empId, name: 'ทดสอบยกเว้น', webauthnExempt: false });
+    assert.strictEqual(
+      fake._data.profiles.find((x) => x.empId === r.empId).webauthnExempt, false);
+    await employees.deleteEmployee(r.empId);
+  });
+
   await t('inviteEmployee เรียกได้และเป็นสิทธิ์แอดมินเท่านั้น', () => {
     const rpc2 = require(path.join(LIB, 'rpc'));
     assert.ok(typeof rpc2.REGISTRY.inviteEmployee === 'function', 'ไม่มีใน REGISTRY');
