@@ -24,6 +24,21 @@ const DIRS = [join(SRC, 'frontend-admin'), join(SRC, 'frontend-employee'), SRC];
 
 /* -------------------------------------------------- ไอคอน / favicon / PWA */
 
+/**
+ * viewport — สำคัญมาก
+ *
+ * ของเดิมบน Apps Script ใส่แท็กนี้จาก `doGet()` ด้วย `.addMetaTag('viewport', ...)`
+ * ไม่ได้อยู่ในไฟล์ HTML ตอนพอร์ตมา Next.js จึงหายไป
+ * ผลคือมือถือเดาความกว้างหน้าเว็บเป็น ~980px แล้วย่อทั้งหน้าลง
+ * ทำให้ `.wrap{max-width:440px}` กลายเป็นคอลัมน์แคบ ๆ กลางจอ มีขอบขาวสองข้าง
+ */
+const VIEWPORT = {
+  // มือถือ: ล็อกไม่ให้ย่อ/ขยาย (ตรงกับสเปกเดิม)
+  employee: 'width=device-width, initial-scale=1, maximum-scale=1',
+  // เดสก์ท็อป: ให้ซูมได้ตามปกติ
+  admin: 'width=device-width, initial-scale=1',
+};
+
 /** แท็ก <link> ชุดไอคอน — ใส่ในทุกหน้าของแอป */
 const HEAD_ICONS = `
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -36,10 +51,12 @@ const HEAD_ICONS = `
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="TapTime">`;
 
-/** แทรกแท็กไอคอนเข้าไปใน <head> */
-function injectIcons(html) {
-  if (html.includes('</head>')) return html.replace('</head>', HEAD_ICONS + '\n</head>');
-  return HEAD_ICONS + html;
+/** แทรก viewport + แท็กไอคอนเข้าไปใน <head> */
+function injectIcons(html, viewport) {
+  const tags =
+    (viewport ? `\n<meta name="viewport" content="${viewport}">` : '') + HEAD_ICONS;
+  if (html.includes('</head>')) return html.replace('</head>', tags + '\n</head>');
+  return tags + html;
 }
 
 const LOGOUT_SVG =
@@ -112,7 +129,7 @@ mkdirSync(OUT, { recursive: true });
 /* ---------------- Admin ---------------- */
 {
   let html = expand(readFileSync(join(SRC, 'frontend-admin', 'Admin.html'), 'utf8'));
-  html = injectIcons(html);
+  html = injectIcons(html, VIEWPORT.admin);
   html = injectHead(html, SHIM);
   html = html.replace('</body>', `${ADMIN_EXTRA()}\n</body>`);
   writeFileSync(join(OUT, 'admin.html'), html);
@@ -122,7 +139,7 @@ mkdirSync(OUT, { recursive: true });
 /* ---------------- Employee ---------------- */
 {
   let html = expand(readFileSync(join(SRC, 'frontend-employee', 'Employee.html'), 'utf8'));
-  html = injectIcons(html);
+  html = injectIcons(html, VIEWPORT.employee);
   html = html.replace(/<\?=\s*token\s*\?>/g, '__TAPTIME_TOKEN__');
   // ค่าจาก server ต้องประกาศ "ก่อน" shim เพราะ shim อ่าน WEBAUTHN ตอนโหลด
   const bootstrap =
@@ -137,7 +154,7 @@ mkdirSync(OUT, { recursive: true });
 }
 
 /* ---------------- Login / Set password ---------------- */
-writeFileSync(join(OUT, 'login.html'), injectIcons(LOGIN_PAGE()));
+writeFileSync(join(OUT, 'login.html'), injectIcons(LOGIN_PAGE()));   // มี viewport ในเทมเพลตแล้ว
 console.log('  ✓ generated/login.html');
 writeFileSync(join(OUT, 'set-password.html'), injectIcons(SET_PASSWORD_PAGE()));
 console.log('  ✓ generated/set-password.html');

@@ -717,6 +717,32 @@ async function t(name, fn) {
     assert.ok(h.includes('deviceHint'), 'ไม่ได้ส่ง device hint');
   });
 
+  await t('ทุกหน้ามี meta viewport (กันหน้าจอมือถือย่อ/ไม่เต็มจอ)', () => {
+    // ของเดิม Apps Script ใส่แท็กนี้จาก doGet() ไม่ได้อยู่ในไฟล์ HTML
+    // ถ้าหายไปอีก มือถือจะเดาความกว้างเป็น ~980px แล้วย่อทั้งหน้า
+    for (const page of ['admin.html', 'employee.html', 'login.html', 'set-password.html']) {
+      const h = fs.readFileSync(path.join(GEN, page), 'utf8');
+      const m = h.match(/<meta name="viewport" content="([^"]+)">/);
+      assert.ok(m, page + ' ไม่มี meta viewport');
+      assert.ok(/width=device-width/.test(m[1]),
+        page + ' viewport ต้องมี width=device-width — ได้ ' + m[1]);
+      assert.ok(/initial-scale=1/.test(m[1]),
+        page + ' viewport ต้องมี initial-scale=1');
+      assert.ok(h.indexOf('<meta name="viewport"') < h.indexOf('</head>'),
+        page + ': viewport ต้องอยู่ใน <head>');
+      // ต้องมีอันเดียว ไม่ซ้อนกัน
+      assert.strictEqual((h.match(/<meta name="viewport"/g) || []).length, 1,
+        page + ': มี viewport ซ้ำ');
+    }
+  });
+
+  await t('หน้าพนักงานล็อกไม่ให้ซูม (ตรงกับสเปกเดิม)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    const m = h.match(/<meta name="viewport" content="([^"]+)">/);
+    assert.ok(/maximum-scale=1/.test(m[1]),
+      'หน้าพนักงานต้องมี maximum-scale=1 — ได้ ' + m[1]);
+  });
+
   await t('ทุกหน้ามี favicon / apple-touch-icon / manifest ครบ', () => {
     for (const page of ['admin.html', 'employee.html', 'login.html', 'set-password.html']) {
       const h = fs.readFileSync(path.join(GEN, page), 'utf8');
