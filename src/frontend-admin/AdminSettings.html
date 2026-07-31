@@ -1,0 +1,310 @@
+<script>
+/* ============ เมนู: ธุรกิจ / สาขา / ตำแหน่ง ============ */
+
+function renderSettings(){
+  loading();
+  var b=(BOOT.branches||[])[0]||{};
+  var c=BOOT.config||{};
+  $('content').innerHTML=
+    '<div class="page-title">ตั้งค่าธุรกิจ สาขา และเวลาทำงาน</div>'+
+    '<div class="page-sub">จัดการข้อมูลบริษัท สาขา พิกัดเช็คอิน และกฎเวลาทำงาน</div>'+
+
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('store')+'</div><div>'+
+      '<h3>ข้อมูลบริษัท</h3><p>ชื่อบริษัทที่แสดงบนหัวเว็บและสลิป</p></div></div>'+
+      '<div class="f-row">'+
+        fld('ชื่อบริษัท',true,'<input id="c_company" value="'+esc(c.companyName||'')+'">')+
+        '<div style="display:flex;align-items:flex-end"><button class="btn btn-dark" onclick="saveCompanyM()">บันทึกชื่อบริษัท</button></div>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('store')+'</div><div>'+
+      '<h3>ข้อมูลสาขา + ปักหมุดพิกัดเช็คอิน</h3><p>คลิกบนแผนที่หรือลากหมุดเพื่อกำหนดตำแหน่ง วงสีฟ้าคือรัศมีเช็คอิน</p></div></div>'+
+      '<div class="f-row">'+
+        fld('ชื่อสาขา',true,'<input id="b_name" value="'+esc(b.name)+'">')+
+        fld('รหัสสาขา',false,'<input id="b_code" value="'+esc(b.code)+'">')+
+      '</div>'+
+      fld('ที่อยู่',false,'<input id="b_addr" value="'+esc(b.address)+'">')+
+      '<div style="height:12px"></div>'+
+      '<div class="f-row" style="grid-template-columns:1fr auto">'+
+        fld('ค้นหาสถานที่ (เพื่อเลื่อนแผนที่)',false,'<input id="b_search" placeholder="เช่น เซ็นทรัลรังสิต" onkeydown="if(event.key===\'Enter\'){event.preventDefault();searchPlace()}">')+
+        '<div style="display:flex;align-items:flex-end"><button class="btn btn-ghost" onclick="searchPlace()">🔍 ค้นหา</button></div>'+
+      '</div>'+
+      '<div id="bmap" style="height:340px;border-radius:12px;overflow:hidden;border:1px solid var(--line);margin-bottom:14px;z-index:0"></div>'+
+      '<div class="f-row three">'+
+        fld('Latitude',true,'<input id="b_lat" value="'+esc(b.lat||13.7563)+'" onchange="syncMapFromInputs()">')+
+        fld('Longitude',true,'<input id="b_lng" value="'+esc(b.lng||100.5018)+'" onchange="syncMapFromInputs()">')+
+        fld('รัศมีเช็คอิน (เมตร)',true,'<input id="b_radius" type="number" value="'+esc(b.radius||50)+'">')+
+      '</div>'+
+    '</div>'+
+
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('clock')+'</div><div>'+
+      '<h3>เวลาทำงาน</h3><p>ตั้งค่าเวลาเข้า-ออก และเกณฑ์มาสาย</p></div></div>'+
+      '<div class="f-row three">'+
+        fld('เวลาเริ่มงาน',true,'<input id="b_wstart" type="time" value="'+esc(b.workStart||'08:00')+'">')+
+        fld('เวลาเลิกงาน',true,'<input id="b_wend" type="time" value="'+esc(b.workEnd||'17:00')+'">')+
+        fld('ชั่วโมงพัก/วัน',true,'<input id="b_break" type="number" step="0.5" value="'+esc(b.breakHours||1)+'">')+
+      '</div>'+
+      '<div class="f-row">'+
+        fld('เกณฑ์การมาสาย (นาที)',true,'<input id="b_late" type="number" value="'+esc(b.lateThreshold||15)+'">')+
+        fld('เช็คอินก่อนเวลาได้ (นาที)',false,'<input id="b_early" type="number" value="'+esc(b.earlyCheckinMin||30)+'">')+
+      '</div>'+
+    '</div>'+
+    '<div class="actions"><button class="btn btn-dark" onclick="saveSettingsAll(\''+(b.branchId||'')+'\')">บันทึกข้อมูลสาขา</button></div>';
+
+  initBranchMap();
+}
+
+function saveCompanyM(){
+  run('saveCompany',$('c_company').value.trim()).then(function(){
+    toast('บันทึกชื่อบริษัทแล้ว');
+    $('bizName').textContent=$('c_company').value.trim()||'TapTime';
+    return run('adminBootstrap');}).then(function(b){BOOT=b;});
+}
+
+/* ---------- แผนที่ Leaflet ---------- */
+var _bmap, _bmarker, _bcircle;
+function initBranchMap(){
+  if(typeof L==='undefined'){ $('bmap').innerHTML='<div class="empty">โหลดแผนที่ไม่ได้ (ตรวจอินเทอร์เน็ต)</div>'; return; }
+  var lat=parseFloat($('b_lat').value)||13.7563, lng=parseFloat($('b_lng').value)||100.5018;
+  var radius=parseFloat($('b_radius').value)||50;
+  if(_bmap){_bmap.remove();_bmap=null;}
+  _bmap=L.map('bmap').setView([lat,lng],16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(_bmap);
+  _bmarker=L.marker([lat,lng],{draggable:true}).addTo(_bmap);
+  _bcircle=L.circle([lat,lng],{radius:radius,color:'#3b6ef5',fillColor:'#3b6ef5',fillOpacity:.12,weight:2}).addTo(_bmap);
+  _bmap.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
+  _bmarker.on('dragend',function(){ var ll=_bmarker.getLatLng(); setPin(ll.lat,ll.lng); });
+  $('b_radius').addEventListener('input',function(){ if(_bcircle)_bcircle.setRadius(parseFloat(this.value)||0); });
+  setTimeout(function(){ _bmap.invalidateSize(); },250);
+}
+function setPin(lat,lng){
+  $('b_lat').value=lat.toFixed(6); $('b_lng').value=lng.toFixed(6);
+  if(_bmarker)_bmarker.setLatLng([lat,lng]);
+  if(_bcircle)_bcircle.setLatLng([lat,lng]);
+}
+function syncMapFromInputs(){
+  var lat=parseFloat($('b_lat').value),lng=parseFloat($('b_lng').value);
+  if(isNaN(lat)||isNaN(lng)||!_bmap)return;
+  _bmap.setView([lat,lng],16); setPin(lat,lng);
+}
+function searchPlace(){
+  var q=$('b_search').value.trim(); if(!q)return;
+  toast('กำลังค้นหา...');
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.length){toast('ไม่พบสถานที่');return;}
+      var lat=parseFloat(d[0].lat),lng=parseFloat(d[0].lon);
+      _bmap.setView([lat,lng],17); setPin(lat,lng);
+    }).catch(function(){toast('ค้นหาไม่สำเร็จ');});
+}
+
+function saveSettingsAll(branchId){
+  var branch={branchId:branchId,name:$('b_name').value,code:$('b_code').value,
+    address:$('b_addr').value,lat:$('b_lat').value,lng:$('b_lng').value,radius:$('b_radius').value,
+    workStart:$('b_wstart').value,workEnd:$('b_wend').value,breakHours:$('b_break').value,
+    lateThreshold:$('b_late').value,earlyCheckinMin:$('b_early').value};
+  run('saveBranch',branch).then(function(){toast('บันทึกข้อมูลสาขาแล้ว');return run('adminBootstrap');})
+    .then(function(b){BOOT=b;});
+}
+
+/* ============ เมนู: ตั้งค่าวันลา ============
+ * - โควตา / เงื่อนไขลาล่วงหน้า / วันหมดอายุ
+ * - เลือกได้ว่าให้สิทธิ์ "ทุกคน" หรือ "เฉพาะคนที่เลือก"
+ * - กำหนดจำนวนวันเฉพาะรายคนได้ (เช่น อายุงานเกิน 1 ปี ได้ลาพักร้อนเพิ่ม)
+ * - เลือกได้ว่าจะแสดงจำนวนวันลา/ปี ในหน้าพนักงานไหม
+ * ============================================ */
+
+var _leaveSummary=null;
+
+function renderLeaveTypes(){
+  loading();
+  run('leaveAssignSummary').then(function(sum){
+    _leaveSummary=sum;
+    var list=BOOT.leaveTypes||[];
+    var rows=list.map(function(l,i){
+      var s=(sum.byType||{})[l.typeId]||{assignAll:true,assigned:sum.total,customCount:0};
+      var who=s.assignAll
+        ? '<span class="tag t-green">ทุกคน ('+sum.total+')</span>'
+        : (s.assigned>0
+            ? '<span class="tag t-orange">เฉพาะ '+s.assigned+' คน</span>'
+            : '<span class="tag t-gray">ยังไม่ได้เลือกใคร</span>');
+      if(s.customCount>0) who+=' <span style="color:var(--muted);font-size:12px">โควตาพิเศษ '+s.customCount+' คน</span>';
+      return '<tr><td>'+(i+1)+'</td><td><b>'+esc(l.name)+'</b></td>'+
+        '<td>'+esc(l.daysPerYear)+' วัน/ปี</td>'+
+        '<td>'+who+'</td>'+
+        '<td>'+(l.showQuota===false
+          ? '<span class="tag t-gray">ซ่อน</span>'
+          : '<span class="tag t-green">แสดง</span>')+'</td>'+
+        '<td>'+(Number(l.advanceDays||0)>0?('ลาล่วงหน้า ≥ '+l.advanceDays+' วัน'):'ไม่กำหนด')+'</td>'+
+        '<td>'+esc(l.expireDate||'-')+'</td>'+
+        '<td><span class="btn btn-sm btn-green" onclick="openAssign(\'' + l.typeId + '\')">'+
+          svgI('users',{size:15})+' กำหนดสิทธิ์</span> '+
+        '<span class="btn btn-sm btn-ghost" onclick="editLeaveType(\''+l.typeId+'\')">แก้ไข</span> '+
+        '<span class="btn btn-sm btn-red" onclick="delLeaveType(\''+l.typeId+'\')">ลบ</span></td></tr>';
+    }).join('');
+
+    $('content').innerHTML=
+      '<div class="page-title">ตั้งค่าประเภทวันลา</div>'+
+      '<div class="page-sub">จัดการประเภทการลา โควตา เงื่อนไข และผู้ที่ได้รับสิทธิ์</div>'+
+      '<div class="card"><div class="card-head"><div class="ic">'+svgI('calendar')+'</div><div>'+
+        '<h3>ประเภทการลา</h3><p>ทั้งหมด '+list.length+' ประเภท</p></div>'+
+        '<div style="margin-left:auto"><button class="btn btn-dark" onclick="editLeaveType()">+ ประเภทวันลา</button></div></div>'+
+        '<table><thead><tr><th>ลำดับ</th><th>ชื่อประเภท</th><th>โควตากลาง</th>'+
+        '<th>ผู้ได้รับสิทธิ์</th><th>แสดงจำนวนวัน</th><th>เงื่อนไข</th><th>วันหมดอายุ</th><th>จัดการ</th></tr></thead><tbody>'+
+        (rows||'<tr><td colspan="8" class="empty">ยังไม่มีประเภทการลา</td></tr>')+
+        '</tbody></table></div>';
+  });
+}
+
+function editLeaveType(typeId){
+  var l=(BOOT.leaveTypes||[]).filter(function(x){return x.typeId===typeId;})[0]||{};
+  var showQuota=(l.showQuota===false)?false:true;
+  openModal('<h2>'+(typeId?'แก้ไขประเภทการลา':'เพิ่มประเภทการลา')+'</h2>'+
+    '<div class="msub">กำหนดชื่อ โควตา และเงื่อนไขการลาล่วงหน้า</div>'+
+    fld('ชื่อประเภทการลา',true,'<input id="lt_name" value="'+esc(l.name)+'" placeholder="เช่น ลาป่วย, ลากิจ, ลาพักร้อน">')+'<div style="height:12px"></div>'+
+    '<div class="f-row">'+
+      fld('จำนวนวันลา/ปี (โควตากลาง)',true,'<input id="lt_days" type="number" min="0" step="0.5" value="'+esc(l.daysPerYear)+'">')+
+      fld('ต้องลาล่วงหน้า (วัน)',false,'<input id="lt_adv" type="number" min="0" value="'+esc(l.advanceDays||0)+'">')+
+    '</div>'+
+    fld('วันหมดอายุการลา',false,'<input id="lt_exp" type="date" value="'+esc(l.expireDate)+'">')+
+    '<label class="ckline"><input type="checkbox" id="lt_show"'+(showQuota?' checked':'')+'>'+
+      '<span>แสดงจำนวนวันลา/ปี ในหน้าพนักงาน'+
+      '<div class="cksub">ถ้าไม่ติ๊ก พนักงานยังยื่นลาประเภทนี้ได้ แต่จะไม่เห็นตัวเลขโควตาคงเหลือ</div></span></label>'+
+    (typeId?'':'<div class="cksub" style="margin-bottom:10px">สร้างเสร็จแล้วกด "กำหนดสิทธิ์" เพื่อเลือกว่าใครได้ลาประเภทนี้บ้าง (ค่าเริ่มต้น = ทุกคน)</div>')+
+    '<div class="actions"><button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
+    '<button class="btn btn-dark" onclick="saveLeaveTypeM(\''+(typeId||'')+'\')">บันทึก</button></div>');
+}
+
+function saveLeaveTypeM(typeId){
+  var lt={typeId:typeId||'',name:$('lt_name').value.trim(),daysPerYear:$('lt_days').value,
+    advanceDays:$('lt_adv').value||0,expireDate:$('lt_exp').value,
+    showQuota:$('lt_show').checked};
+  if(!lt.name){toast('กรุณากรอกชื่อ');return;}
+  run('saveLeaveType',lt).then(function(){closeModal();toast('บันทึกแล้ว');
+    return run('adminBootstrap');}).then(function(b){BOOT=b;renderLeaveTypes();});
+}
+
+function delLeaveType(typeId){
+  if(!confirm('ลบประเภทการลานี้? (การกำหนดสิทธิ์ของพนักงานจะถูกลบไปด้วย)'))return;
+  run('deleteLeaveType',typeId).then(function(){toast('ลบแล้ว');
+    return run('adminBootstrap');}).then(function(b){BOOT=b;renderLeaveTypes();});
+}
+
+/* ============ กำหนดสิทธิ์การลา (assign) ============ */
+
+var ASSIGN={typeId:'',name:'',base:0,assignAll:true,sel:{},q:''};
+
+function openAssign(typeId){
+  var lt=(BOOT.leaveTypes||[]).filter(function(x){return x.typeId===typeId;})[0]||{};
+  openModal('<h2>กำหนดสิทธิ์ '+esc(lt.name)+'</h2><div class="msub">กำลังโหลด...</div><div class="spinner"></div>', true);
+
+  Promise.all([run('listLeaveAssignments',typeId), run('listEmployees')])
+    .then(function(r){
+      var assigns=r[0]||[], emps=r[1]||[];
+      window._assignEmps=emps;
+      ASSIGN={
+        typeId:typeId, name:lt.name||'', base:Number(lt.daysPerYear||0),
+        assignAll:(lt.assignAll===false)?false:true, sel:{}, q:''
+      };
+      assigns.forEach(function(a){
+        ASSIGN.sel[a.empId]={on:true,days:(a.daysOverride==null?'':String(a.daysOverride))};
+      });
+      drawAssign();
+    })
+    .catch(function(e){ $('modal').innerHTML='<h2>ผิดพลาด</h2><div class="msub">'+esc(e.message)+'</div>'+
+      '<div class="actions"><button class="btn btn-ghost" onclick="closeModal()">ปิด</button></div>'; });
+}
+
+function drawAssign(){
+  var emps=(window._assignEmps||[]).filter(function(e){
+    return String(e.status||'active').toLowerCase()!=='inactive';
+  });
+  var q=ASSIGN.q.trim().toLowerCase();
+  var shown=emps.filter(function(e){
+    if(!q) return true;
+    return [e.name,e.nickname,e.branchName,e.position]
+      .some(function(v){return String(v||'').toLowerCase().indexOf(q)!==-1;});
+  });
+
+  var picked=Object.keys(ASSIGN.sel).filter(function(k){return ASSIGN.sel[k].on;}).length;
+
+  var rows=shown.map(function(e){
+    var st=ASSIGN.sel[e.empId]||{on:false,days:''};
+    return '<div class="assign-row">'+
+      '<input type="checkbox" id="as_'+e.empId+'"'+(st.on?' checked':'')+
+        ' onchange="assignToggle(\''+e.empId+'\',this.checked)">'+
+      '<label class="an" for="as_'+e.empId+'">'+esc(e.name)+
+        (e.nickname?' <span class="ab">('+esc(e.nickname)+')</span>':'')+
+        '<div class="ab">'+esc(e.branchName||'')+(e.position?' · '+esc(e.position):'')+'</div></label>'+
+      '<input type="number" min="0" step="0.5" placeholder="'+ASSIGN.base+'" value="'+esc(st.days)+'"'+
+        (st.on?'':' disabled')+' title="เว้นว่าง = ใช้โควตากลาง '+ASSIGN.base+' วัน"'+
+        ' onchange="assignDays(\''+e.empId+'\',this.value)">'+
+      '</div>';
+  }).join('');
+
+  $('modal').innerHTML=
+    '<h2>กำหนดสิทธิ์ '+esc(ASSIGN.name)+'</h2>'+
+    '<div class="msub">โควตากลาง '+ASSIGN.base+' วัน/ปี — ใส่ตัวเลขข้างชื่อเพื่อกำหนดจำนวนวันเฉพาะคนนั้น</div>'+
+
+    '<label class="ckline"><input type="checkbox" id="as_all"'+(ASSIGN.assignAll?' checked':'')+
+      ' onchange="assignAllToggle(this.checked)">'+
+      '<span>ให้สิทธิ์พนักงานทุกคน'+
+      '<div class="cksub">ติ๊กไว้ = ทุกคนได้ '+ASSIGN.base+' วัน (คนที่กำหนดจำนวนวันเฉพาะไว้ด้านล่างจะใช้ค่าของตัวเอง)</div></span></label>'+
+
+    '<div class="assign-tools">'+
+      '<input type="text" id="as_q" placeholder="ค้นหาพนักงาน..." value="'+esc(ASSIGN.q)+'">'+
+      '<span class="btn btn-sm btn-ghost" onclick="assignPickAll(true)">เลือกทั้งหมด</span>'+
+      '<span class="btn btn-sm btn-ghost" onclick="assignPickAll(false)">ล้างที่เลือก</span>'+
+      '<span style="color:var(--muted);font-size:13px">เลือกไว้ '+picked+' คน</span>'+
+    '</div>'+
+
+    '<div class="assign-list">'+(rows||'<div class="empty" style="padding:20px">ไม่พบพนักงาน</div>')+'</div>'+
+
+    '<div class="actions">'+
+      '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
+      '<button class="btn btn-dark" onclick="saveAssign()">บันทึกสิทธิ์</button>'+
+    '</div>';
+
+  var qEl=$('as_q');
+  qEl.oninput=function(){ ASSIGN.q=this.value; drawAssign();
+    var el=$('as_q'); el.focus(); el.setSelectionRange(el.value.length,el.value.length); };
+}
+
+function assignToggle(empId,on){
+  if(!ASSIGN.sel[empId]) ASSIGN.sel[empId]={on:false,days:''};
+  ASSIGN.sel[empId].on=on;
+  if(!on) ASSIGN.sel[empId].days='';
+  drawAssign();
+}
+function assignDays(empId,v){
+  if(!ASSIGN.sel[empId]) ASSIGN.sel[empId]={on:true,days:''};
+  ASSIGN.sel[empId].days=v;
+}
+function assignAllToggle(on){ ASSIGN.assignAll=on; drawAssign(); }
+function assignPickAll(on){
+  (window._assignEmps||[]).forEach(function(e){
+    if(String(e.status||'active').toLowerCase()==='inactive') return;
+    if(!ASSIGN.sel[e.empId]) ASSIGN.sel[e.empId]={on:false,days:''};
+    ASSIGN.sel[e.empId].on=on;
+    if(!on) ASSIGN.sel[e.empId].days='';
+  });
+  drawAssign();
+}
+
+function saveAssign(){
+  var items=Object.keys(ASSIGN.sel)
+    .filter(function(k){return ASSIGN.sel[k].on;})
+    .map(function(k){return {empId:k,daysOverride:ASSIGN.sel[k].days};});
+
+  if(!ASSIGN.assignAll && !items.length){
+    toast('เลือกพนักงานอย่างน้อย 1 คน หรือติ๊ก "ให้สิทธิ์ทุกคน"'); return;
+  }
+  run('saveLeaveAssignments',{typeId:ASSIGN.typeId,assignAll:ASSIGN.assignAll,items:items})
+    .then(function(){ closeModal(); toast('บันทึกสิทธิ์การลาแล้ว');
+      return run('adminBootstrap'); })
+    .then(function(b){ BOOT=b; renderLeaveTypes(); })
+    .catch(function(e){ toast('ผิดพลาด: '+e.message); });
+}
+
+</script>

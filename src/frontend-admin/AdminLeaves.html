@@ -1,0 +1,53 @@
+<script>
+/* ============ เมนู: ลา - ขาดงาน (อนุมัติ/ปฏิเสธ) ============ */
+
+function renderLeaves(){
+  loading();
+  window._leaveFilter=window._leaveFilter||'pending';
+  loadLeaves();
+}
+
+function loadLeaves(){
+  run('listLeaves',window._leaveFilter).then(function(list){
+    var rows=list.map(function(l,i){
+      return '<tr><td>'+(i+1)+'</td>'+
+        '<td><b>'+esc(l.empName)+'</b></td>'+
+        '<td>'+esc(branchName(l.branchId))+'</td>'+
+        '<td>'+esc(l.startDate)+'</td><td>'+esc(l.endDate)+'</td>'+
+        '<td>'+esc(l.days)+' วัน</td>'+
+        '<td>'+esc(l.leaveType)+'</td>'+
+        '<td>'+esc(l.reason)+'</td>'+
+        '<td>'+leaveTag(l.status)+'</td>'+
+        '<td>'+leaveActions(l)+'</td></tr>';
+    }).join('');
+    $('content').innerHTML=
+      '<div class="page-title">รายการลางาน</div>'+
+      '<div class="page-sub">รายการลางานแต่ละสาขา — อนุมัติหรือปฏิเสธได้</div>'+
+      '<div class="card">'+
+        '<div class="chips">'+
+          lchip('pending','รออนุมัติ')+lchip('approved','อนุมัติแล้ว')+lchip('rejected','ปฏิเสธ')+
+        '</div>'+
+        '<div style="overflow:auto"><table><thead><tr><th>ลำดับ</th><th>ชื่อพนักงาน</th><th>สาขา</th>'+
+        '<th>วันที่เริ่มลา</th><th>วันที่สิ้นสุด</th><th>จำนวนวัน</th><th>ประเภท</th>'+
+        '<th>เหตุผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+
+        (rows||'<tr><td colspan="10" class="empty">ไม่มีรายการ</td></tr>')+
+        '</tbody></table></div>'+
+      '</div>';
+  });
+}
+
+function lchip(v,label){return '<div class="chip'+(window._leaveFilter===v?' active':'')+
+  '" onclick="window._leaveFilter=\''+v+'\';loadLeaves()">'+label+'</div>';}
+function leaveTag(s){return {pending:'<span class="tag t-orange">pending</span>',
+  approved:'<span class="tag t-green">approved</span>',
+  rejected:'<span class="tag t-red">rejected</span>'}[s]||s;}
+function leaveActions(l){
+  if(l.status==='pending')
+    return '<span class="btn btn-sm btn-green" onclick="decide(\''+l.reqId+'\',\'approved\')">✓ อนุมัติ</span> '+
+           '<span class="btn btn-sm btn-red" onclick="decide(\''+l.reqId+'\',\'rejected\')">✕ ปฏิเสธ</span>';
+  return '<span class="tag t-gray">ดำเนินการแล้ว</span>';
+}
+function decide(reqId,d){
+  run('decideLeave',reqId,d).then(function(){toast(d==='approved'?'อนุมัติแล้ว':'ปฏิเสธแล้ว');loadLeaves();});
+}
+</script>

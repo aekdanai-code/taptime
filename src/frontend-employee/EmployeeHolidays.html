@@ -1,0 +1,52 @@
+<script>
+/* ============ ปฏิทินวันหยุด (ฝั่งพนักงาน, อ่านอย่างเดียว) ============ */
+
+var _empCalYM=null;
+
+function drawEmpCalendar(){
+  if(!CTX)return;
+  if(!_empCalYM){var n=new Date();_empCalYM={y:n.getFullYear(),m:n.getMonth()};}
+  var y=_empCalYM.y, m=_empCalYM.m;
+  var woff=CTX.weeklyOff||[];
+  var hmap={}; (CTX.holidays||[]).forEach(function(h){hmap[h.date]=h.name;});
+  var wd=['อา','จ','อ','พ','พฤ','ศ','ส'];
+  var monthNames=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+    'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  var startWd=new Date(y,m,1).getDay(), daysIn=new Date(y,m+1,0).getDate();
+  var todayS=CTX.today;
+
+  var bar='<div class="calbar"><button onclick="empCalMove(-1)">‹</button>'+
+    '<b>'+monthNames[m]+' '+y+'</b>'+
+    '<button onclick="empCalMove(1)">›</button></div>';
+
+  var grid='<div class="cal">';
+  wd.forEach(function(d){grid+='<div class="wd">'+d+'</div>';});
+  for(var i=0;i<startWd;i++) grid+='<div></div>';
+  for(var dd=1;dd<=daysIn;dd++){
+    var ds=y+'-'+('0'+(m+1)).slice(-2)+'-'+('0'+dd).slice(-2);
+    var dow=new Date(y,m,dd).getDay();
+    var cls='cell', tip='';
+    if(hmap[ds]){cls+=' hol';tip=hmap[ds];}
+    else if(woff.indexOf(dow)!==-1){cls+=' off';}
+    if(ds===todayS)cls+=' today';
+    grid+='<div class="'+cls+'"><div>'+dd+'</div>'+
+      (tip?'<div class="nm">'+esc(tip)+'</div>':'')+'</div>';
+  }
+  grid+='</div>';
+  $('empCal').innerHTML=bar+grid;
+
+  // วันหยุดราชการที่จะถึง
+  var up=(CTX.holidays||[]).filter(function(h){return h.date>=todayS;})
+    .sort(function(a,b){return String(a.date).localeCompare(String(b.date));}).slice(0,6);
+  $('empHolList').innerHTML=up.length?up.map(function(h){
+    return '<div class="row"><div class="ic" style="background:var(--red-soft);color:var(--red)">'+svgI('flag',{size:18})+'</div>'+
+      '<div class="grow"><div class="t">'+esc(h.name)+'</div><div class="s">'+esc(fmtDate(h.date))+'</div></div></div>';
+  }).join(''):'<div class="empty">ไม่มีวันหยุดราชการที่จะถึง</div>';
+}
+
+function empCalMove(delta){
+  var m=_empCalYM.m+delta, y=_empCalYM.y;
+  if(m<0){m=11;y--;} if(m>11){m=0;y++;}
+  _empCalYM={y:y,m:m}; drawEmpCalendar();
+}
+</script>

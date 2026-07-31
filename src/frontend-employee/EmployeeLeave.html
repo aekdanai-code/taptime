@@ -1,0 +1,60 @@
+<script>
+/* ============================================================
+ * EmployeeLeave — แสดงรายการลา + ฟอร์มยื่นขอลา
+ * ============================================================ */
+
+function leavePreview(){
+  var l=(CTX.myLeaves||[])[0];
+  if(!l)return '<div class="row"><div class="ic">'+svgI('calendar',{size:18})+'</div><div class="grow">'+
+    '<div class="t">การลา</div><div class="s">ไม่มีรายการ</div></div></div>';
+  return leaveRow(l);
+}
+function leaveList(){
+  var arr=CTX.myLeaves||[];
+  if(!arr.length)return '<div class="empty">ยังไม่มีรายการลา</div>';
+  return arr.map(leaveRow).join('');
+}
+function leaveRow(l){
+  var b={pending:'b-pending',approved:'b-approved',rejected:'b-rejected'}[l.status]||'b-pending';
+  var txt={pending:'รออนุมัติ',approved:'อนุมัติแล้ว',rejected:'ปฏิเสธ'}[l.status]||l.status;
+  return '<div class="row"><div class="ic">'+svgI('calendar',{size:18})+'</div><div class="grow">'+
+    '<div class="t">'+esc(l.leaveType)+'</div>'+
+    '<div class="s">'+esc(fmtDate(l.startDate))+' – '+esc(fmtDate(l.endDate))+' · '+esc(l.days)+' วัน</div></div>'+
+    '<span class="badge '+b+'">'+txt+'</span></div>';
+}
+
+function openLeaveForm(){
+  HALF=false;
+  var opts=(CTX.leaveTypes||[]).map(function(t){return '<option>'+esc(t.name)+'</option>';}).join('');
+  openSheet(
+    '<h3>ยื่นลา <span class="x" onclick="closeSheet()">'+svgI('x',{size:18})+'</span></h3>'+
+    '<div class="fld"><label>ประเภทวันลา <span class="req">*</span></label>'+
+      '<select id="lv_type">'+opts+'</select></div>'+
+    '<div class="toggle"><div class="switch" id="lv_half" onclick="toggleHalf()"></div>'+
+      '<span>ลาครึ่งวัน</span></div>'+
+    '<div class="fld"><label>วันที่เริ่มลา <span class="req">*</span></label>'+
+      '<input id="lv_start" type="date" onchange="calcDays()"></div>'+
+    '<div class="fld"><label>วันที่สิ้นสุด <span class="req">*</span></label>'+
+      '<input id="lv_end" type="date" onchange="calcDays()"></div>'+
+    '<div class="fld"><label>จำนวนวันที่ลา</label>'+
+      '<input id="lv_days" value="-" readonly></div>'+
+    '<div class="fld"><label>เหตุผลการลา <span class="req">*</span></label>'+
+      '<textarea id="lv_reason" placeholder="กรอกเหตุผลการลา..."></textarea></div>'+
+    '<button class="btn-dark" onclick="submitLeave()">ยืนยันการลา</button>'+
+    '<button class="btn-out" onclick="closeSheet()">ยกเลิก</button>');
+}
+function toggleHalf(){HALF=!HALF;$('lv_half').classList.toggle('on',HALF);calcDays();}
+function calcDays(){
+  var s=$('lv_start').value,e=$('lv_end').value;
+  if(HALF){$('lv_days').value='0.5 วัน';return;}
+  if(s&&e){var d=Math.round((new Date(e)-new Date(s))/86400000)+1;
+    $('lv_days').value=(d>0?d:0)+' วัน';}
+}
+function submitLeave(){
+  var p={leaveType:$('lv_type').value,startDate:$('lv_start').value,endDate:$('lv_end').value,
+    reason:$('lv_reason').value.trim(),halfDay:HALF};
+  if(!p.startDate||!p.endDate||!p.reason){toast('กรอกข้อมูลให้ครบ');return;}
+  run('empSubmitLeave',TOKEN,p).then(function(){closeSheet();toast('ส่งคำขอลาแล้ว รออนุมัติ');
+    loadCtx();}).catch(function(e){toast(e.message);});
+}
+</script>

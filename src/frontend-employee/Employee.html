@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<?!= include('EmployeeStyles'); ?>
+</head>
+<body>
+<div class="wrap" id="app"><div class="spinner"></div></div>
+
+<!-- bottom nav -->
+<div class="tabbar hide" id="tabbar">
+  <div class="tab active" data-p="home"><span class="ic" data-icon="home" data-sz="19"></span>หน้าหลัก</div>
+  <div class="tab" data-p="history"><span class="ic" data-icon="history" data-sz="19"></span>ประวัติ</div>
+  <div class="tab" data-p="leave"><span class="ic" data-icon="calendar" data-sz="19"></span>การลา</div>
+  <div class="tab" data-p="holiday"><span class="ic" data-icon="flag" data-sz="19"></span>วันหยุด</div>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- ค่าจาก server (ไฟล์นี้ถูกประมวลผลเป็น template จึงแทน token ได้) -->
+<script>
+  var TOKEN = '<?= token ?>';
+  var CTX = null;
+  var HALF = false;
+</script>
+
+<!-- สคริปต์แยกตามงาน -->
+<?!= include('EmployeeCore'); ?>
+<?!= include('EmployeeLeave'); ?>
+<?!= include('EmployeeTimeEdit'); ?>
+<?!= include('EmployeeHolidays'); ?>
+</body>
+</html>

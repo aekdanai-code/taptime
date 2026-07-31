@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<?!= include('AdminStyles'); ?>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo">T</span> TapTime</div>
+
+    <div class="nav-group">หน้าหลัก</div>
+    <div class="nav-item active" data-tab="dashboard"><span class="ic" data-icon="home"></span> ภาพรวม</div>
+
+    <div class="nav-group">การจัดการธุรกิจ</div>
+    <div class="nav-item" data-tab="employees"><span class="ic" data-icon="users"></span> จัดการพนักงาน</div>
+    <div class="nav-item" data-tab="settings"><span class="ic" data-icon="store"></span> ธุรกิจ / สาขา / ตำแหน่ง</div>
+    <div class="nav-item" data-tab="leavetypes"><span class="ic" data-icon="calendar"></span> ตั้งค่าวันลา</div>
+    <div class="nav-item" data-tab="holidays"><span class="ic" data-icon="flag"></span> วันหยุด</div>
+
+    <div class="nav-group">การทำงาน</div>
+    <div class="nav-item" data-tab="attendance"><span class="ic" data-icon="clock"></span> เช็คชื่อ เข้า - ออก</div>
+    <div class="nav-item" data-tab="leaves"><span class="ic" data-icon="clipboard"></span> ลา - ขาดงาน</div>
+    <div class="nav-item" data-tab="timeedits"><span class="ic" data-icon="edit"></span> คำขอแก้เวลา</div>
+    <div class="nav-item" data-tab="daily"><span class="ic" data-icon="calendar"></span> รายงานรายวัน</div>
+    <div class="nav-item" data-tab="report"><span class="ic" data-icon="chart"></span> รายงานประจำเดือน</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="biz" id="bizName">TapTime</div>
+    </div>
+    <div class="content" id="content"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<?!= include('AdminCore'); ?>
+<?!= include('AdminEmployees'); ?>
+<?!= include('AdminAttendance'); ?>
+<?!= include('AdminLeaves'); ?>
+<?!= include('AdminTimeEdits'); ?>
+<?!= include('AdminDaily'); ?>
+<?!= include('AdminSettings'); ?>
+<?!= include('AdminHolidays'); ?>
+<?!= include('AdminReports'); ?>
+</body>
+</html>

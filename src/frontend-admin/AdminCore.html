@@ -1,0 +1,135 @@
+<script>
+/* ============================================================
+ * AdminCore — state, ตัวช่วยกลาง, init/router, เมนูภาพรวม
+ * (โหลดก่อนไฟล์เมนูอื่นเสมอ)
+ * ============================================================ */
+
+/* ---- state ---- */
+var BOOT = null;              // branches/positions/leaveTypes/config
+var CURRENT_TAB = 'dashboard';
+
+/* ---- ตัวช่วย DOM/ทั่วไป ---- */
+function $(id){return document.getElementById(id);}
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},2200);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function loading(){$('content').innerHTML='<div class="spinner"></div>';}
+
+/* ---- modal ---- */
+function openModal(html,wide){var m=$('modal');m.className='modal'+(wide?' wide':'');
+  m.innerHTML=html;$('overlay').classList.add('open');}
+function closeModal(){$('overlay').classList.remove('open');}
+
+/* ---- เรียก backend แบบ promise ----
+ * ฝั่ง server คืนค่าเป็น JSON string (กันปัญหา serialization ของ
+ * google.script.run) จึง parse กลับเป็น object/array ที่นี่
+ */
+function run(fn){
+  var args=[].slice.call(arguments,1);
+  return new Promise(function(res,rej){
+    google.script.run.withSuccessHandler(function(s){
+      if(s==null){res(null);return;}
+      try{res(JSON.parse(s));}catch(e){res(s);}
+    }).withFailureHandler(rej)[fn].apply(null,args);
+  });
+}
+
+/* ---- ตัวช่วยฟอร์ม (ใช้ร่วมทุกเมนู) ---- */
+function fld(label,req,inner){return '<div class="field"><label>'+label+
+  (req?' <span class="req">*</span>':'')+'</label>'+inner+'</div>';}
+function opt(arr,sel){return arr.map(function(v){
+  return '<option'+(v===sel?' selected':'')+'>'+esc(v)+'</option>';}).join('');}
+function opt2(pairs,sel){return pairs.map(function(p){
+  return '<option value="'+p[0]+'"'+(p[0]===sel?' selected':'')+'>'+esc(p[1])+'</option>';}).join('');}
+function stat(cls,n,label){return '<div class="stat '+cls+'"><b>'+n+'</b><span>'+label+'</span></div>';}
+function todayStr(){var d=new Date();return d.getFullYear()+'-'+
+  ('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+
+/* ---- ตัวช่วยสาขา/ตำแหน่ง ---- */
+function branchName(id){var b=(BOOT.branches||[]).filter(function(x){return x.branchId===id;})[0];
+  return b?b.name:'';}
+function branchOptions(sel){return (BOOT.branches||[]).map(function(b){
+  return '<option value="'+b.branchId+'"'+(b.branchId===sel?' selected':'')+'>'+esc(b.name)+'</option>';}).join('');}
+function posOptions(sel){return (BOOT.positions||[]).map(function(p){
+  return '<option'+(p.name===sel?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');}
+
+/* ---- ชุดไอคอนเส้น (flat stroke, สีตามข้อความ) ---- */
+var ICONS={
+  home:'<path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 6"/><path d="M20.5 20a5.2 5.2 0 0 0-4-5"/>',
+  store:'<path d="M3.5 9 5 4.5h14L20.5 9"/><path d="M4.5 9v10.5h15V9"/><path d="M9.5 19.5V14h5v5.5"/>',
+  calendar:'<rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 3v3M16 3v3"/>',
+  flag:'<path d="M5 21V4"/><path d="M5 4.5h11l-2 3 2 3H5"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.5 2"/>',
+  clipboard:'<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9 4.5V3.5h6v1M9.5 10h5M9.5 13.5h3.5"/>',
+  chart:'<path d="M4 4v16h16"/><path d="M8 16v-4M12 16V9M16 16v-6"/>',
+  zap:'<path d="M13 3 5 13.5h5.5L9.5 21 19 10h-5.5L14.5 3Z"/>',
+  pin:'<path d="M12 21s6.5-5.4 6.5-10.5A6.5 6.5 0 0 0 5.5 10.5C5.5 15.6 12 21 12 21Z"/><circle cx="12" cy="10.4" r="2.3"/>',
+  plus:'<path d="M12 5.5v13M5.5 12h13"/>',
+  check:'<path d="M20 6.5 9.5 17 4 11.5"/>',
+  x:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  edit:'<path d="M4 20.5h4.5L19 10l-4.5-4.5L4 16v4.5Z"/><path d="M12.5 6.5 17 11"/>',
+  trash:'<path d="M4.5 7h15M9 7V5h6v2M6.5 7l1 12.5h9l1-12.5"/>',
+  link:'<path d="M9.5 14.5a4 4 0 0 0 6 .4l2-2a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14.5 9.5a4 4 0 0 0-6-.4l-2 2a4 4 0 0 0 5.7 5.7l1-1"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'
+};
+function svgI(name,opt){opt=opt||{};var s=opt.size||20;
+  return '<svg viewBox="0 0 24 24" width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" '+
+    'stroke-width="'+(opt.sw||1.8)+'" stroke-linecap="round" stroke-linejoin="round" '+
+    'style="vertical-align:middle;flex-shrink:0">'+(ICONS[name]||'')+'</svg>';}
+function paintIcons(root){ (root||document).querySelectorAll('[data-icon]').forEach(function(el){
+  el.innerHTML=svgI(el.getAttribute('data-icon'),{size:el.getAttribute('data-sz')||20}); }); }
+
+/* ---- init ---- */
+window.addEventListener('load',function(){
+  paintIcons(document);
+  $('overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+  run('adminBootstrap').then(function(b){
+    if(!b) throw new Error('เซิร์ฟเวอร์ส่งข้อมูลว่าง — ลอง Deploy ใหม่ (Manage deployments → Edit → Version: New)');
+    BOOT=b;
+    if(b.config&&b.config.companyName) $('bizName').textContent=b.config.companyName;
+    document.querySelectorAll('.nav-item').forEach(function(n){
+      n.addEventListener('click',function(){switchTab(n.dataset.tab);});});
+    switchTab('dashboard');
+  }).catch(function(e){
+    $('content').innerHTML='<div class="card"><b>โหลดข้อมูลไม่สำเร็จ</b><br>'+
+      esc(e.message||e)+'<br><br>ตรวจสอบว่ารันฟังก์ชัน <code>setupSheets()</code> แล้วหรือยัง</div>';
+  });
+});
+
+/* ---- router ---- */
+function switchTab(tab){
+  CURRENT_TAB=tab;
+  document.querySelectorAll('.nav-item').forEach(function(n){
+    n.classList.toggle('active',n.dataset.tab===tab);});
+  ({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
+    leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
+    holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily}[tab])();
+}
+
+/* ============ เมนู: ภาพรวม ============ */
+function renderDashboard(){
+  loading();
+  var date=todayStr();
+  run('adminDashboard',date,'').then(function(d){
+    $('content').innerHTML=
+     '<div class="page-title">ภาพรวม</div>'+
+     '<div class="page-sub">สรุปการเข้างานประจำวันที่ '+date+'</div>'+
+     '<div class="stat-grid">'+
+       stat('s-blue',d.totalEmployees,'พนักงานทั้งหมด')+
+       stat('s-green',d.ontime,'เข้างานตรงเวลา')+
+       stat('s-gray',d.notYet,'ยังไม่เข้างาน')+
+       stat('s-orange',d.late,'มาสาย')+
+     '</div>'+
+     '<div class="card" style="margin-top:18px">'+
+       '<div class="card-head"><div class="ic">'+svgI('clipboard')+'</div><div>'+
+       '<h3>รายการรออนุมัติล่าสุด</h3><p>คำขอลาที่รอการอนุมัติ</p></div></div>'+
+       (d.leavesPending>0
+         ? '<div class="tag t-orange">คำขอลา รออนุมัติ '+d.leavesPending+' รายการ</div>'+
+           ' <span class="link" onclick="switchTab(\'leaves\')">ไปที่หน้าอนุมัติ →</span>'
+         : '<div class="empty">ไม่มีคำขอที่รออนุมัติ</div>')+
+     '</div>';
+  });
+}
+</script>

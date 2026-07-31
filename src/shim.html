@@ -1,0 +1,263 @@
+<script>
+/* ============================================================================
+ * shim.html — สะพานเชื่อม frontend เดิม (Google Apps Script) เข้ากับ Next.js API
+ *
+ * โค้ดหน้าเว็บเดิมเรียก backend ผ่าน
+ *     google.script.run.withSuccessHandler(f).withFailureHandler(g).fnName(...)
+ * และ helper run() ฝั่ง client จะ JSON.parse ผลลัพธ์ (เพราะ backend เดิมคืน
+ * JSON string ผ่าน J())
+ *
+ * ไฟล์นี้จำลอง API ตัวนั้นให้ครบ โดยยิง fetch ไป POST /api/rpc แทน
+ * -> ไม่ต้องแก้ไฟล์ Admin*.html / Employee*.html แม้แต่บรรทัดเดียว
+ *
+ * นอกจากนี้ยัง "แทรก" ขั้นตอนยืนยันตัวตนด้วย Face ID / ลายนิ้วมือ (WebAuthn)
+ * ก่อนส่ง empCheckIn / empCheckOut โดยที่หน้าเว็บเดิมไม่รู้ตัวเลย
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------------------ base64url */
+  function b64uToBuf(s) {
+    s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), buf = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+  }
+  function bufToB64u(buf) {
+    var bytes = new Uint8Array(buf), s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  /* ---------------------------------------------------- ข้อมูลจาก server */
+  var WA = (typeof WEBAUTHN !== 'undefined' && WEBAUTHN) ? WEBAUTHN : null;
+  var BIOMETRIC_FNS = { empCheckIn: 1, empCheckOut: 1 };
+
+  function supportsWebAuthn() {
+    return !!(window.PublicKeyCredential && navigator.credentials &&
+              navigator.credentials.create);
+  }
+
+  /* ---------------------------------------------- ผูกอุปกรณ์ (ครั้งแรก) */
+  function enroll() {
+    return fetch('/api/webauthn/register', { credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error); return d; }); })
+      .then(function (opts) {
+        return navigator.credentials.create({
+          publicKey: {
+            challenge: b64uToBuf(opts.challenge),
+            rp: opts.rp,
+            user: {
+              id: b64uToBuf(opts.user.id),
+              name: opts.user.name,
+              displayName: opts.user.displayName
+            },
+            pubKeyCredParams: opts.pubKeyCredParams,
+            timeout: opts.timeout,
+            attestation: opts.attestation,
+            authenticatorSelection: opts.authenticatorSelection,
+            excludeCredentials: (opts.excludeCredentials || []).map(function (c) {
+              return { id: b64uToBuf(c.id), type: 'public-key', transports: c.transports };
+            })
+          }
+        });
+      })
+      .then(function (cred) {
+        var body = {
+          id: cred.id,
+          rawId: bufToB64u(cred.rawId),
+          type: cred.type,
+          clientExtensionResults: cred.getClientExtensionResults(),
+          response: {
+            clientDataJSON: bufToB64u(cred.response.clientDataJSON),
+            attestationObject: bufToB64u(cred.response.attestationObject),
+            transports: cred.response.getTransports ? cred.response.getTransports() : []
+          }
+        };
+        return fetch('/api/webauthn/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ response: body })
+        }).then(function (r) {
+          return r.json().then(function (d) { if (!r.ok) throw new Error(d.error); return d; });
+        });
+      })
+      .then(function (d) { if (WA) WA.enrolled = true; return d; });
+  }
+
+  /* ------------------------------------------- ยืนยันตัวตนก่อนลงเวลา */
+  function assertIdentity() {
+    return fetch('/api/webauthn/authenticate', { credentials: 'same-origin' })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          if (r.status === 409 && d.code === 'not_enrolled') {
+            // ยังไม่เคยผูกอุปกรณ์ -> ผูกให้เลย แล้วค่อยขอ options ใหม่
+            return enroll().then(assertIdentity).then(function (a) { return { __done: a }; });
+          }
+          if (!r.ok) throw new Error(d.error || 'ยืนยันตัวตนไม่สำเร็จ');
+          return d;
+        });
+      })
+      .then(function (opts) {
+        if (opts && opts.__done) return opts.__done;   // ผ่านรอบ enroll มาแล้ว
+        return navigator.credentials.get({
+          publicKey: {
+            challenge: b64uToBuf(opts.challenge),
+            rpId: opts.rpId,
+            timeout: opts.timeout,
+            userVerification: opts.userVerification,
+            allowCredentials: (opts.allowCredentials || []).map(function (c) {
+              return { id: b64uToBuf(c.id), type: 'public-key', transports: c.transports };
+            })
+          }
+        }).then(function (cred) {
+          return {
+            id: cred.id,
+            rawId: bufToB64u(cred.rawId),
+            type: cred.type,
+            clientExtensionResults: cred.getClientExtensionResults(),
+            response: {
+              clientDataJSON: bufToB64u(cred.response.clientDataJSON),
+              authenticatorData: bufToB64u(cred.response.authenticatorData),
+              signature: bufToB64u(cred.response.signature),
+              userHandle: cred.response.userHandle ? bufToB64u(cred.response.userHandle) : undefined
+            }
+          };
+        });
+      });
+  }
+
+  /** แปลง error ของ WebAuthn เป็นข้อความไทย */
+  function waMessage(e) {
+    var n = e && e.name;
+    if (n === 'NotAllowedError')
+      return 'ยกเลิกการยืนยันตัวตน หรือใช้เวลานานเกินไป — กรุณาลองใหม่';
+    if (n === 'InvalidStateError')
+      return 'อุปกรณ์นี้ผูกไว้แล้ว กรุณาลองเช็คอินอีกครั้ง';
+    if (n === 'NotSupportedError' || n === 'SecurityError')
+      return 'อุปกรณ์หรือเบราว์เซอร์นี้ไม่รองรับการยืนยันตัวตนด้วยชีวมิติ — กรุณาแจ้งผู้ดูแลระบบ';
+    return (e && e.message) || 'ยืนยันตัวตนไม่สำเร็จ';
+  }
+
+  /* ------------------------------- เก็บ accuracy ล่าสุดจาก geolocation */
+  var lastAccuracy = null;
+  if (navigator.geolocation && navigator.geolocation.getCurrentPosition) {
+    var _orig = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+    navigator.geolocation.getCurrentPosition = function (ok, err, opt) {
+      return _orig(function (pos) {
+        try { lastAccuracy = pos.coords.accuracy; } catch (e) {}
+        ok(pos);
+      }, err, opt);
+    };
+  }
+
+  /* ----------------------------------------------------------- transport */
+  function post(fnName, args, extra) {
+    var payload = { fn: fnName, args: args };
+    if (extra) { payload.webauthn = extra.webauthn; payload.meta = extra.meta; }
+    return fetch('/api/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { data = null; }
+        if (!r.ok) {
+          if (r.status === 401 && data && data.code === 'unauthorized') {
+            location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+            return null;
+          }
+          var err = new Error((data && data.error) || ('เกิดข้อผิดพลาด (HTTP ' + r.status + ')'));
+          err.code = data && data.code;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function call(fnName, args, onSuccess, onFailure) {
+    var chain;
+
+    if (BIOMETRIC_FNS[fnName] && WA && WA.required) {
+      if (!supportsWebAuthn()) {
+        if (onFailure) onFailure(new Error(
+          'อุปกรณ์นี้ไม่รองรับการยืนยันตัวตนด้วย Face ID / ลายนิ้วมือ — กรุณาแจ้งผู้ดูแลระบบเพื่อขอยกเว้น'));
+        return;
+      }
+      chain = assertIdentity()
+        .then(function (assertion) {
+          return post(fnName, args, {
+            webauthn: assertion,
+            meta: { accuracy: lastAccuracy }
+          });
+        })
+        .catch(function (e) {
+          // แปลง error ของ WebAuthn ให้อ่านรู้เรื่องก่อนส่งต่อ
+          if (e && e.name && e.name.indexOf('Error') > 0 && !e.code) {
+            throw new Error(waMessage(e));
+          }
+          throw e;
+        });
+    } else if (BIOMETRIC_FNS[fnName]) {
+      chain = post(fnName, args, { meta: { accuracy: lastAccuracy } });
+    } else {
+      chain = post(fnName, args);
+    }
+
+    chain
+      .then(function (data) {
+        if (data === null && !onSuccess) return;
+        if (window.__ttAfterRpc) { try { window.__ttAfterRpc(fnName, data); } catch (e) {} }
+        /* backend เดิมคืนเป็น JSON string — จำลองพฤติกรรมเดิมให้เป๊ะ */
+        if (onSuccess) onSuccess(data === null ? null : JSON.stringify(data));
+      })
+      .catch(function (e) {
+        if (onFailure) onFailure(e instanceof Error ? e : new Error(String(e)));
+        else console.error(e);
+      });
+  }
+
+  function makeRunner(onSuccess, onFailure) {
+    var target = {
+      withSuccessHandler: function (f) { return makeRunner(f, onFailure); },
+      withFailureHandler: function (f) { return makeRunner(onSuccess, f); },
+      withUserObject: function () { return makeRunner(onSuccess, onFailure); }
+    };
+    return new Proxy(target, {
+      get: function (obj, prop) {
+        if (prop in obj) return obj[prop];
+        if (typeof prop !== 'string') return undefined;
+        return function () {
+          call(prop, [].slice.call(arguments), onSuccess, onFailure);
+        };
+      }
+    });
+  }
+
+  window.google = window.google || {};
+  window.google.script = window.google.script || {};
+  window.google.script.run = makeRunner(null, null);
+
+  window.google.script.host = window.google.script.host || {
+    close: function () {}, setHeight: function () {}, setWidth: function () {},
+    origin: location.origin
+  };
+  window.google.script.url = window.google.script.url || {
+    getLocation: function (cb) {
+      var p = {};
+      new URLSearchParams(location.search).forEach(function (v, k) { p[k] = v; });
+      cb({ parameter: p, parameters: p, hash: location.hash.replace('#', '') });
+    }
+  };
+
+  /* เผยฟังก์ชันให้ปุ่ม "ผูกอุปกรณ์" เรียกใช้ได้ */
+  window.ttEnrollPasskey = enroll;
+  window.ttWebAuthnMessage = waMessage;
+  window.ttSupportsWebAuthn = supportsWebAuthn;
+})();
+</script>

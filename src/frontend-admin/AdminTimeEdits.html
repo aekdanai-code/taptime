@@ -1,0 +1,56 @@
+<script>
+/* ============ เมนู: คำขอแก้เวลา (อนุมัติ/ปฏิเสธ) ============ */
+
+function renderTimeEdits(){
+  loading();
+  window._teFilter=window._teFilter||'pending';
+  loadTimeEdits();
+}
+
+function loadTimeEdits(){
+  run('listTimeEdits',window._teFilter).then(function(list){
+    var rows=list.map(function(t,i){
+      var chg=[];
+      if(t.newCheckIn) chg.push('เข้า: '+esc(t.oldCheckIn||'-')+' → <b>'+esc(t.newCheckIn)+'</b>');
+      if(t.newCheckOut) chg.push('ออก: '+esc(t.oldCheckOut||'-')+' → <b>'+esc(t.newCheckOut)+'</b>');
+      return '<tr><td>'+(i+1)+'</td>'+
+        '<td><b>'+esc(t.empName)+'</b></td>'+
+        '<td>'+esc(branchName(t.branchId))+'</td>'+
+        '<td>'+esc(t.date)+'</td>'+
+        '<td>'+chg.join('<br>')+'</td>'+
+        '<td>'+esc(t.reason||'')+'</td>'+
+        '<td>'+teTag(t.status)+'</td>'+
+        '<td>'+teActions(t)+'</td></tr>';
+    }).join('');
+    $('content').innerHTML=
+      '<div class="page-title">คำขอแก้เวลา</div>'+
+      '<div class="page-sub">คำขอแก้เวลาเข้า-ออกงาน (เช่น ลืมเช็คเอาท์) — อนุมัติแล้วระบบจะอัปเดตเวลาและคำนวณสาย/OT ใหม่</div>'+
+      '<div class="card">'+
+        '<div class="chips">'+
+          techip('pending','รออนุมัติ')+techip('approved','อนุมัติแล้ว')+techip('rejected','ปฏิเสธ')+
+        '</div>'+
+        '<div style="overflow:auto"><table><thead><tr><th>ลำดับ</th><th>ชื่อพนักงาน</th><th>สาขา</th>'+
+        '<th>วันที่</th><th>การแก้ไข</th><th>เหตุผล</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+
+        (rows||'<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>')+
+        '</tbody></table></div>'+
+      '</div>';
+  });
+}
+
+function techip(v,label){return '<div class="chip'+(window._teFilter===v?' active':'')+
+  '" onclick="window._teFilter=\''+v+'\';loadTimeEdits()">'+label+'</div>';}
+function teTag(s){return {pending:'<span class="tag t-orange">รออนุมัติ</span>',
+  approved:'<span class="tag t-green">อนุมัติ</span>',
+  rejected:'<span class="tag t-red">ปฏิเสธ</span>'}[s]||s;}
+function teActions(t){
+  if(t.status==='pending')
+    return '<span class="btn btn-sm btn-green" onclick="decideTE(\''+t.editId+'\',\'approved\')">อนุมัติ</span> '+
+           '<span class="btn btn-sm btn-red" onclick="decideTE(\''+t.editId+'\',\'rejected\')">ปฏิเสธ</span>';
+  return '<span class="tag t-gray">ดำเนินการแล้ว</span>';
+}
+function decideTE(editId,d){
+  run('decideTimeEdit',editId,d).then(function(){
+    toast(d==='approved'?'อนุมัติและอัปเดตเวลาแล้ว':'ปฏิเสธแล้ว'); loadTimeEdits();
+  }).catch(function(e){ toast('ผิดพลาด: '+(e.message||e)); });
+}
+</script>

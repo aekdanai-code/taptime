@@ -1,0 +1,76 @@
+<script>
+/* ============ เมนู: รายงานรายวัน (การเข้าทำงาน) ============ */
+
+function renderDaily(){
+  var now=new Date();
+  var ymd=now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
+  window._dayDate=window._dayDate||ymd;
+  $('content').innerHTML=
+    '<div class="page-title">รายงานรายวัน</div>'+
+    '<div class="page-sub">สถานะการเข้าทำงานของพนักงานทุกคนในวันที่เลือก (รวมผู้ที่ลา)</div>'+
+    '<div class="card">'+
+      '<div class="toolbar">'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">วันที่</label>'+
+          '<input type="date" id="day_date" value="'+window._dayDate+'" style="max-width:170px" onchange="loadDaily()"></div>'+
+        '<div class="field grow" style="margin:0"><label style="font-size:12px">ค้นหาชื่อพนักงาน</label>'+
+          '<input id="day_name" placeholder="พิมพ์ชื่อแล้วกด Enter" onkeydown="if(event.key===\'Enter\')loadDaily()"></div>'+
+        '<button class="btn btn-dark" style="align-self:flex-end" onclick="loadDaily()">แสดง</button>'+
+      '</div>'+
+      '<div class="legend">'+
+        dleg('green','ปกติ')+dleg('orange','มาสาย')+dleg('red','ลา')+
+        dleg('muted','ขาด')+dleg('blue','หยุด')+
+      '</div>'+
+      '<div id="dayResult"><div class="spinner"></div></div>'+
+    '</div>';
+  loadDaily();
+}
+function dleg(color,label){return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">'+
+  '<i style="display:inline-block;width:12px;height:12px;border-radius:4px;background:var(--'+color+')"></i>'+
+  esc(label)+'</span>';}
+
+function loadDaily(){
+  var res=$('dayResult'); res.innerHTML='<div class="spinner"></div>';
+  window._dayDate=$('day_date').value;
+  var params={date:$('day_date').value, name:$('day_name').value.trim()};
+  run('dailyReport',params).then(drawDaily)
+    .catch(function(e){ res.innerHTML='<div class="empty">ผิดพลาด: '+esc(e.message||e)+'</div>'; });
+}
+
+function dayTag(r){
+  var m={present:['t-green','ปกติ'],late:['t-orange','มาสาย'],
+    leave:['t-red','ลา'+(r.leaveType?' ('+esc(r.leaveType)+')':'')],
+    absent:['t-gray','ขาด'],holiday:['t-blue','หยุด'],future:['t-gray','-']};
+  var t=m[r.status]||['t-gray',r.label];
+  return '<span class="tag '+t[0]+'">'+t[1]+'</span>';
+}
+
+function drawDaily(r){
+  if(!r||!r.rows||!r.rows.length){
+    $('dayResult').innerHTML='<div class="empty">ไม่มีข้อมูลพนักงานในเงื่อนไขนี้</div>'; return;
+  }
+  var s=r.sum||{};
+  var body=r.rows.map(function(row){
+    return '<tr>'+
+      '<td class="nm"><b>'+esc(row.name)+'</b></td>'+
+      '<td>'+esc(row.position||'-')+'</td>'+
+      '<td>'+esc(row.date)+'</td>'+
+      '<td>'+dayTag(row)+'</td>'+
+      '<td>'+esc(row.checkIn||'-')+'</td>'+
+      '<td>'+esc(row.checkOut||'-')+'</td>'+
+      '<td>'+(row.workHours!==''&&row.workHours!=null?esc(row.workHours)+' ชม.':'-')+'</td>'+
+      '<td'+(row.lateMinutes>0?' style="color:var(--orange);font-weight:700"':'')+'>'+
+        (row.lateMinutes>0?row.lateMinutes+' นาที':'-')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('dayResult').innerHTML=
+    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">'+
+      esc(r.date)+(r.isHoliday?' · <b style="color:var(--blue)">วันหยุด'+(r.holidayName?' — '+esc(r.holidayName):'')+'</b>':'')+
+      ' · พนักงาน '+r.rows.length+' คน · '+
+      'ปกติ '+(s.present||0)+' · มาสาย '+(s.late||0)+' · ลา '+(s.leave||0)+' · ขาด '+(s.absent||0)+'</div>'+
+    '<div style="overflow:auto"><table><thead><tr>'+
+      '<th class="nm">ชื่อพนักงาน</th><th>ตำแหน่ง</th><th>วันที่</th><th>สถานะ</th>'+
+      '<th>เวลาเข้า</th><th>เวลาออก</th><th>ชั่วโมงทำงาน</th><th>มาสาย (นาที)</th>'+
+    '</tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+</script>

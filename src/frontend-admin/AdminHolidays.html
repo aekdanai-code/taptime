@@ -1,0 +1,138 @@
+<script>
+/* ============ เมนู: วันหยุด (ประจำสัปดาห์ + ปฏิทิน) ============
+ * จัดการวันหยุดราชการ/พิเศษ ผ่าน "ปฏิทิน" โดยตรง
+ *   คลิกวันว่าง   -> เพิ่มวันหยุด
+ *   คลิกวันหยุด   -> แก้ไข / ลบ
+ * ============================================================ */
+
+var WDAYS=['อา','จ','อ','พ','พฤ','ศ','ส'];
+var _calYM=null;  // {y,m} เดือนที่แสดงในปฏิทิน
+
+function renderHolidays(){
+  loading();
+  if(!_calYM){var n=new Date();_calYM={y:n.getFullYear(),m:n.getMonth()};}
+  var woff=BOOT.weeklyOff||[];
+  var toggles=WDAYS.map(function(d,i){
+    return '<div class="chip'+(woff.indexOf(i)!==-1?' active':'')+'" onclick="toggleWeeklyOff('+i+')">'+d+'</div>';
+  }).join('');
+
+  var hs=BOOT.holidays||[];
+
+  $('content').innerHTML=
+    '<div class="page-title">ตั้งค่าวันหยุด</div>'+
+    '<div class="page-sub">วันหยุดราชการและวันหยุดประจำสัปดาห์ จะไม่ถูกนับเป็น "ขาดงาน"</div>'+
+
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('calendar')+'</div><div>'+
+      '<h3>วันหยุดประจำสัปดาห์</h3><p>เลือกวันที่หยุดทุกสัปดาห์ (เช่น เสาร์-อาทิตย์)</p></div></div>'+
+      '<div class="chips">'+toggles+'</div></div>'+
+
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('flag')+'</div><div>'+
+      '<h3>ปฏิทินวันหยุด</h3>'+
+      '<p>คลิกที่วันเพื่อเพิ่ม แก้ไข หรือลบวันหยุด · ทั้งหมด '+hs.length+' วัน</p></div></div>'+
+      '<div class="legend" style="margin-top:0">'+
+        '<span><i style="background:var(--red-soft)"></i> วันหยุดราชการ / พิเศษ</span>'+
+        '<span><i style="background:#eef0f2"></i> วันหยุดประจำสัปดาห์</span>'+
+      '</div>'+
+      '<div id="calWrap"></div></div>';
+
+  drawCalendar();
+}
+
+function drawCalendar(){
+  var y=_calYM.y, m=_calYM.m;
+  var woff=BOOT.weeklyOff||[];
+  var hmap={}, hid={};
+  (BOOT.holidays||[]).forEach(function(h){hmap[h.date]=h.name;hid[h.date]=h.holidayId;});
+  var first=new Date(y,m,1), startWd=first.getDay(), daysIn=new Date(y,m+1,0).getDate();
+  var monthNames=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  var todayS=todayStr();
+
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+    '<button class="btn btn-ghost btn-sm" onclick="calMove(-1)">‹ ก่อนหน้า</button>'+
+    '<b style="font-size:15px">'+monthNames[m]+' '+y+'</b>'+
+    '<button class="btn btn-ghost btn-sm" onclick="calMove(1)">ถัดไป ›</button></div>';
+
+  var grid='<div class="cal-grid">';
+  WDAYS.forEach(function(d){grid+='<div class="cal-hd">'+d+'</div>';});
+  for(var i=0;i<startWd;i++) grid+='<div></div>';
+  for(var d=1;d<=daysIn;d++){
+    var ds=y+'-'+('0'+(m+1)).slice(-2)+'-'+('0'+d).slice(-2);
+    var wd=new Date(y,m,d).getDay();
+    var cls='cal-day';
+    if(hmap[ds]) cls+=' is-holiday';
+    else if(woff.indexOf(wd)!==-1) cls+=' is-weekend';
+    if(ds===todayS) cls+=' is-today';
+    grid+='<div class="'+cls+'" onclick="calClick(\''+ds+'\')" '+
+      'title="'+(hmap[ds]?esc(hmap[ds])+' — คลิกเพื่อแก้ไข':'คลิกเพื่อเพิ่มวันหยุด')+'">'+
+      '<div class="dnum">'+d+'</div>'+
+      (hmap[ds]?'<div class="dname">'+esc(hmap[ds])+'</div>':'')+
+      (hmap[ds]?'':'<div class="dadd">+</div>')+
+      '</div>';
+  }
+  grid+='</div>';
+  $('calWrap').innerHTML=head+grid;
+}
+
+function calMove(delta){
+  var m=_calYM.m+delta, y=_calYM.y;
+  if(m<0){m=11;y--;} if(m>11){m=0;y++;}
+  _calYM={y:y,m:m}; drawCalendar();
+}
+
+/** คลิกวันในปฏิทิน — มีวันหยุดอยู่แล้วให้แก้ไข ไม่มีก็เพิ่มใหม่ */
+function calClick(ds){
+  var h=(BOOT.holidays||[]).filter(function(x){return x.date===ds;})[0];
+  editHoliday(h?h.holidayId:'', ds);
+}
+
+function toggleWeeklyOff(i){
+  var woff=(BOOT.weeklyOff||[]).slice();
+  var pos=woff.indexOf(i);
+  if(pos===-1) woff.push(i); else woff.splice(pos,1);
+  woff.sort();
+  run('saveWeeklyOff',woff.join(',')).then(function(){
+    BOOT.weeklyOff=woff; toast('บันทึกวันหยุดประจำสัปดาห์แล้ว'); renderHolidays();
+  });
+}
+
+/** @param presetDate วันที่ที่คลิกมาจากปฏิทิน (ใช้ตอนเพิ่มใหม่) */
+function editHoliday(holidayId, presetDate){
+  var h=(BOOT.holidays||[]).filter(function(x){return x.holidayId===holidayId;})[0]||{};
+  var dateVal=h.date||presetDate||'';
+  var thai=dateVal?fmtThaiDate(dateVal):'';
+  openModal(
+    '<h2>'+(holidayId?'แก้ไขวันหยุด':'เพิ่มวันหยุด')+'</h2>'+
+    '<div class="msub">'+(thai||'วันหยุดราชการหรือวันหยุดพิเศษ')+'</div>'+
+    fld('วันที่',true,'<input id="hd_date" type="date" value="'+esc(dateVal)+'">')+
+    '<div style="height:12px"></div>'+
+    fld('ชื่อวันหยุด',true,'<input id="hd_name" value="'+esc(h.name)+'" placeholder="เช่น วันสงกรานต์">')+
+    '<div class="actions">'+
+      (holidayId?'<button class="btn btn-red" style="margin-right:auto" onclick="delHoliday(\''+holidayId+'\')">ลบวันหยุดนี้</button>':'')+
+      '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
+      '<button class="btn btn-dark" onclick="saveHolidayM(\''+(holidayId||'')+'\')">บันทึก</button>'+
+    '</div>');
+  setTimeout(function(){ var el=$('hd_name'); if(el) el.focus(); },60);
+}
+
+/** 'yyyy-MM-dd' -> 'วันพฤหัสบดีที่ 30 กรกฎาคม 2026' */
+function fmtThaiDate(ds){
+  var p=ds.split('-'); if(p.length!==3) return ds;
+  var d=new Date(ds+'T00:00:00');
+  var dayNames=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  var monthNames=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  return 'วัน'+dayNames[d.getDay()]+'ที่ '+(+p[2])+' '+monthNames[+p[1]-1]+' '+p[0];
+}
+
+function saveHolidayM(holidayId){
+  var h={holidayId:holidayId||'',date:$('hd_date').value,name:$('hd_name').value.trim()};
+  if(!h.date||!h.name){toast('กรอกวันที่และชื่อวันหยุด');return;}
+  run('saveHoliday',h).then(function(){closeModal();toast('บันทึกแล้ว');
+    return run('adminBootstrap');}).then(function(b){BOOT=b;renderHolidays();});
+}
+
+function delHoliday(holidayId){
+  if(!confirm('ลบวันหยุดนี้?'))return;
+  run('deleteHoliday',holidayId).then(function(){closeModal();toast('ลบแล้ว');
+    return run('adminBootstrap');}).then(function(b){BOOT=b;renderHolidays();});
+}
+</script>

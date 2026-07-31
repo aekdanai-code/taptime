@@ -1,0 +1,33 @@
+{
+  "name": "taptime-web",
+  "version": "2.0.0",
+  "private": true,
+  "description": "TapTime — ระบบลงเวลาทำงาน (Next.js + Supabase)",
+  "scripts": {
+    "prebuild": "node scripts/build-html.mjs",
+    "predev": "node scripts/build-html.mjs",
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "html": "node scripts/build-html.mjs",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/build-html.mjs && tsc lib/*.ts lib/api/*.ts --outDir .testbuild --module commonjs --target ES2020 --moduleResolution node --esModuleInterop --skipLibCheck --strict false",
+    "test": "node test/run-tests.js",
+    "create-admin": "node scripts/create-admin.mjs",
+    "sql": "python3 scripts/xlsx-to-sql.py ../TapTime.xlsx supabase/seed.sql",
+    "icons": "python3 scripts/make-icons.py assets/logo-source.png"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.2.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "typescript": "^5.5.4"
+  }
+}

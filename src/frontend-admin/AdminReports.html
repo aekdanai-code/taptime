@@ -1,0 +1,96 @@
+<script>
+/* ============ เมนู: รายงานประจำเดือน ============ */
+
+function renderReport(){
+  var now=new Date();
+  var ym=now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2);
+  window._repYM=window._repYM||ym;
+  $('content').innerHTML=
+    '<div class="page-title">รายงานประจำเดือน</div>'+
+    '<div class="page-sub">สถานะการทำงานรายวันของพนักงานทุกคน (วันหยุด/ลา ไม่นับเป็นขาดงาน)</div>'+
+    '<div class="card">'+
+      '<div class="toolbar">'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">เดือน</label>'+
+          '<input type="month" id="rep_month" value="'+window._repYM+'" style="max-width:170px"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">หรือช่วงวันที่</label>'+
+          '<div style="display:flex;gap:6px"><input type="date" id="rep_start" style="max-width:150px">'+
+          '<input type="date" id="rep_end" style="max-width:150px"></div></div>'+
+        '<div class="field grow" style="margin:0"><label style="font-size:12px">ค้นหาชื่อพนักงาน</label>'+
+          '<input id="rep_name" placeholder="พิมพ์ชื่อพนักงาน"></div>'+
+        '<button class="btn btn-dark" style="align-self:flex-end" onclick="loadReport()">แสดงรายงาน</button>'+
+        '<button class="btn btn-green" style="align-self:flex-end" onclick="downloadReportXlsx()">'+svgI('chart',{size:15})+' ดาวน์โหลด Excel</button>'+
+      '</div>'+
+      '<div class="legend">'+
+        leg('c-present','ปกติ')+leg('c-late','สาย')+leg('c-leave','ลา (แสดงประเภท)')+
+        leg('c-absent','ขาด')+leg('c-holiday','วันหยุด')+
+      '</div>'+
+      '<div id="repResult"><div class="spinner"></div></div>'+
+    '</div>';
+  loadReport();
+}
+function leg(cls,label){return '<span><i class="'+cls.replace("c-","lg-")+'"></i>'+label+'</span>';}
+
+function reportParams(){
+  var params={name:($('rep_name')?$('rep_name').value.trim():'')};
+  var start=$('rep_start').value, end=$('rep_end').value;
+  if(start&&end){ params.start=start; params.end=end; }
+  else {
+    var ym=$('rep_month').value; window._repYM=ym;
+    if(ym){ var p=ym.split('-'); var y=+p[0], m=+p[1];
+      params.start=ym+'-01';
+      params.end=ym+'-'+('0'+new Date(y,m,0).getDate()).slice(-2);
+    }
+  }
+  return params;
+}
+
+function loadReport(){
+  var res=$('repResult'); res.innerHTML='<div class="spinner"></div>';
+  run('monthlyReport',reportParams()).then(function(r){ drawReport(r); })
+    .catch(function(e){ res.innerHTML='<div class="empty">ผิดพลาด: '+esc(e.message||e)+'</div>'; });
+}
+
+function downloadReportXlsx(){
+  toast('กำลังสร้างไฟล์ Excel...');
+  run('exportMonthlyReportXlsx',reportParams()).then(function(r){
+    var bin=atob(r.b64), len=bin.length, arr=new Uint8Array(len);
+    for(var i=0;i<len;i++) arr[i]=bin.charCodeAt(i);
+    var url=URL.createObjectURL(new Blob([arr],{type:r.mime}));
+    var a=document.createElement('a'); a.href=url; a.download=r.filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1500);
+    toast('ดาวน์โหลดแล้ว');
+  }).catch(function(e){ toast('ดาวน์โหลดไม่สำเร็จ: '+(e.message||e)); });
+}
+
+function drawReport(r){
+  if(!r||!r.rows||!r.rows.length){
+    $('repResult').innerHTML='<div class="empty">ไม่มีข้อมูลพนักงานในเงื่อนไขนี้</div>'; return;
+  }
+  // header วันที่ (แสดงเลขวัน + ตัวย่อวันในสัปดาห์)
+  var wd=['อา','จ','อ','พ','พฤ','ศ','ส'];
+  var head='<tr><th class="nm">ชื่อพนักงาน</th>';
+  r.days.forEach(function(ds){
+    var p=ds.split('-'); var dow=new Date(ds+'T00:00:00').getDay();
+    head+='<th title="'+ds+'">'+(+p[2])+'<br><span style="font-weight:400;color:var(--muted)">'+wd[dow]+'</span></th>';
+  });
+  head+='<th class="sumcol">ปกติ</th><th class="sumcol">สาย</th>'+
+        '<th class="sumcol">ลา</th><th class="sumcol">ขาด</th></tr>';
+
+  var body=r.rows.map(function(row){
+    var tds=row.cells.map(function(c){
+      return '<td class="c-'+c.status+'" title="'+esc(c.label)+'">'+esc(c.label||'·')+'</td>';
+    }).join('');
+    return '<tr><td class="nm">'+esc(row.name)+'</td>'+tds+
+      '<td class="sumcol">'+row.sum.present+'</td>'+
+      '<td class="sumcol">'+row.sum.late+'</td>'+
+      '<td class="sumcol">'+row.sum.leave+'</td>'+
+      '<td class="sumcol" style="color:var(--red)">'+row.sum.absent+'</td></tr>';
+  }).join('');
+
+  $('repResult').innerHTML=
+    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">'+
+      'ช่วง '+r.start+' ถึง '+r.end+' · พนักงาน '+r.rows.length+' คน</div>'+
+    '<div class="rep-wrap"><table class="rep"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+</script>

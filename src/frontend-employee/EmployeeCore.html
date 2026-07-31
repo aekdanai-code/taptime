@@ -1,0 +1,332 @@
+<script>
+/* ============================================================
+ * EmployeeCore — init, นาฬิกา, หน้าหลัก, เช็คอิน/เอาท์ (GPS), ประวัติ
+ * (ใช้ตัวแปร global TOKEN/CTX/HALF ที่ประกาศไว้ใน Employee.html)
+ * ============================================================ */
+
+var BUSY = false;          // กันกดซ้ำระหว่างรอเซิร์ฟเวอร์/GPS
+var _onClose = null;       // callback เมื่อปิด bottom sheet
+
+/* ---- ตัวช่วย ---- */
+function $(id){return document.getElementById(id);}
+function toast(m){var t=$('toast');t.textContent=m;t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},2600);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function run(fn){var a=[].slice.call(arguments,1);return new Promise(function(res,rej){
+  google.script.run.withSuccessHandler(function(s){
+    if(s==null){res(null);return;}
+    try{res(JSON.parse(s));}catch(e){res(s);}
+  }).withFailureHandler(rej)[fn].apply(null,a);});}
+
+function openSheet(h,onClose){$('sheet').innerHTML=h;$('overlay').classList.add('open');_onClose=onClose||null;}
+function closeSheet(){$('overlay').classList.remove('open');var f=_onClose;_onClose=null;if(f)f();}
+
+/* ---- กล่องแจ้งเตือน / ยืนยัน ---- */
+function showAlert(title,msg,kind,onOk){
+  kind=kind||'info';
+  var map={error:['alert','var(--red)'],warn:['alert','var(--orange)'],
+           info:['info','var(--blue)'],success:['check','var(--green)']};
+  var m=map[kind]||map.info;
+  openSheet(
+    '<div style="text-align:center;padding-top:4px">'+
+      '<div style="color:'+m[1]+';margin-bottom:2px">'+svgI(m[0],{size:44,sw:1.7})+'</div>'+
+      '<h3 style="margin:8px 0 6px">'+esc(title)+'</h3>'+
+      (msg?'<p style="color:var(--muted);font-size:18px;margin-bottom:6px">'+esc(msg)+'</p>':'')+
+    '</div>'+
+    '<button class="btn-dark" onclick="closeSheet()">ตกลง</button>',
+    onOk);
+}
+function showConfirm(title,msg,onYes){
+  openSheet(
+    '<h3 style="text-align:center">'+esc(title)+'</h3>'+
+    (msg?'<p style="color:var(--muted);text-align:center;font-size:18px;margin-bottom:8px">'+esc(msg)+'</p>':'')+
+    '<button class="btn-dark" id="cfmYes">ยืนยัน</button>'+
+    '<button class="btn-out" onclick="closeSheet()">ยกเลิก</button>');
+  $('cfmYes').onclick=function(){closeSheet();if(onYes)onYes();};
+}
+
+/* ---- ชุดไอคอนเส้น (flat stroke) ---- */
+var ICONS={
+  home:'<path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
+  history:'<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5v4h4"/><path d="M12 8.2v4l3 1.8"/>',
+  calendar:'<rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 3v3M16 3v3"/>',
+  flag:'<path d="M5 21V4"/><path d="M5 4.5h11l-2 3 2 3H5"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.5 2"/>',
+  alert:'<path d="M12 4 2.7 20h18.6L12 4Z"/><path d="M12 10v4.2M12 17.2h.01"/>',
+  briefcase:'<rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5M3.5 12.5h17"/>',
+  timer:'<circle cx="12" cy="13.5" r="7.3"/><path d="M12 13.5V9.8M9.5 3h5"/>',
+  login:'<path d="M10 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h4"/><path d="M15 16l4-4-4-4M19 12H8.5"/>',
+  logout:'<path d="M14 4.5h4a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-4"/><path d="M9 16l-4-4 4-4M5 12h10.5"/>',
+  hourglass:'<path d="M7 4h10M7 20h10"/><path d="M8 4c0 4 8 5 8 8s-8 4-8 8"/><path d="M16 4c0 4-8 5-8 8s8 4 8 8"/>',
+  check:'<path d="M20 6.5 9.5 17 4 11.5"/>',
+  pin:'<path d="M12 21s6.5-5.4 6.5-10.5A6.5 6.5 0 0 0 5.5 10.5C5.5 15.6 12 21 12 21Z"/><circle cx="12" cy="10.4" r="2.3"/>',
+  plus:'<path d="M12 5.5v13M5.5 12h13"/>',
+  x:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.7v.02"/>',
+  edit:'<path d="M4 20.5h4.5L19 10l-4.5-4.5L4 16v4.5Z"/><path d="M12.5 6.5 17 11"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'
+};
+function svgI(name,opt){opt=opt||{};var s=opt.size||20;
+  return '<svg viewBox="0 0 24 24" width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" '+
+    'stroke-width="'+(opt.sw||1.8)+'" stroke-linecap="round" stroke-linejoin="round" '+
+    'style="vertical-align:middle;flex-shrink:0">'+(ICONS[name]||'')+'</svg>';}
+function paintIcons(root){ (root||document).querySelectorAll('[data-icon]').forEach(function(el){
+  el.innerHTML=svgI(el.getAttribute('data-icon'),{size:el.getAttribute('data-sz')||20}); }); }
+
+/* ---- นาฬิกาเดินสด + ตัวนับเวลาทำงาน ---- */
+function p2_(n){return ('0'+n).slice(-2);}
+function ciDate_(hhmm){var d=new Date();var p=String(hhmm||'0:0').split(':');
+  d.setHours(+p[0]||0,+p[1]||0,0,0);return d;}
+/* วันที่รูปแบบ DD/MM/YYYY (ค.ศ.) จากสตริง yyyy-MM-dd */
+function fmtDate(iso){
+  if(!iso)return '';
+  var p=String(iso).slice(0,10).split('-');
+  if(p.length!==3)return String(iso);
+  return p2_(+p[2])+'/'+p2_(+p[1])+'/'+(+p[0]);
+}
+var THAI_DAYS=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+var THAI_MON=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function tick(){
+  var d=new Date();
+  var e1=$('clockTime');
+  if(e1)e1.textContent=p2_(d.getHours())+':'+p2_(d.getMinutes());
+  var e2=$('clockDate');
+  if(e2){
+    e2.textContent=THAI_DAYS[d.getDay()]+' '+d.getDate()+' '+THAI_MON[d.getMonth()]+' '+d.getFullYear();
+  }
+  var wt=$('workTimer');
+  if(wt && CTX && CTX.attendance && CTX.attendance.checkInTime && !CTX.attendance.checkOutTime){
+    var min=Math.max(0,Math.floor((d-ciDate_(CTX.attendance.checkInTime))/60000));
+    wt.textContent=p2_(Math.floor(min/60))+':'+p2_(min%60);
+  }
+}
+setInterval(tick,1000);
+
+/* ---- init ---- */
+window.addEventListener('load',function(){
+  paintIcons(document);
+  $('overlay').addEventListener('click',function(e){if(e.target===this)closeSheet();});
+  if(!TOKEN){$('app').innerHTML=errBox('ไม่พบ token — เปิดผ่านลิงก์ที่แอดมินสร้างให้');return;}
+  loadCtx();
+});
+function loadCtx(){
+  run('employeeContext',TOKEN).then(function(c){
+    if(!c)throw new Error('โหลดข้อมูลไม่สำเร็จ');
+    CTX=c; window._winOpen=undefined; renderHome(); $('tabbar').classList.remove('hide');
+    document.querySelectorAll('.tab').forEach(function(t){
+      t.addEventListener('click',function(){switchPage(t.dataset.p);});});
+  }).catch(function(e){$('app').innerHTML=errBox(e.message||e);});
+}
+function errBox(m){return '<div class="sec" style="margin-top:40px"><h4>เกิดข้อผิดพลาด</h4>'+
+  '<p style="color:var(--muted)">'+esc(m)+'</p></div>';}
+
+function switchPage(p){
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.p===p);});
+  document.querySelectorAll('.page').forEach(function(pg){pg.classList.toggle('on',pg.id==='pg_'+p);});
+  if(p==='history')loadHistory();
+  if(p==='holiday')drawEmpCalendar();
+}
+
+/* ============ หน้าหลัก ============ */
+function renderHome(){
+  var a=CTX.attendance,s=CTX.stats;
+  var av=CTX.emp.photo
+    ? '<img class="avatar" src="'+CTX.emp.photo+'" style="object-fit:cover">'
+    : '<div class="avatar" style="color:#556">'+svgI('user',{size:24})+'</div>';
+  $('app').innerHTML=
+    '<div class="hd">'+av+'<div>'+
+      '<div class="hi">สวัสดี</div><div class="nm">'+esc(CTX.emp.name)+'</div>'+
+      '<div class="role">'+esc(CTX.emp.position||'พนักงาน')+'</div></div></div>'+
+
+    '<div class="page on" id="pg_home">'+
+      '<div class="nowbar"><span class="nb-time" id="clockTime">--:--</span>'+
+        '<span class="nb-date" id="clockDate"></span></div>'+
+      stateArea(a)+
+      '<div class="stats stats3">'+
+        stCell('calendar','var(--green)',s.workDays,'มาทำงาน (วัน)')+
+        stCell('alert','var(--orange)',s.lateCount,'มาสาย (ครั้ง)')+
+        stCell('flag','var(--blue)',s.leaveCount,'ลา (ครั้ง)')+
+      '</div>'+
+      '<div class="sec"><h4>สถานะการส่งคำขอ</h4>'+leavePreview()+'</div>'+
+    '</div>'+
+
+    '<div class="page" id="pg_history">'+
+      '<div class="sec"><h4>ประวัติการเข้า-ออกงาน</h4>'+
+        '<div id="histList"><div class="spinner"></div></div></div>'+
+      '<button class="btn-out" onclick="openTimeEditForm()">'+svgI('edit',{size:16})+' ขอแก้ไขเวลา (ลืมเช็คเอาท์)</button>'+
+      '<div class="sec"><h4>คำขอแก้เวลาของฉัน</h4><div id="teList"></div></div>'+
+    '</div>'+
+
+    '<div class="page" id="pg_leave">'+
+      '<div class="sec"><h4>โควตาวันลาคงเหลือ (ปีนี้)</h4>'+leaveBalanceList()+'</div>'+
+      '<div class="sec"><h4>รายการวันลา</h4>'+leaveList()+'</div>'+
+      '<button class="btn-dark" onclick="openLeaveForm()">'+svgI('plus',{size:16})+' ยื่นขอลา</button></div>'+
+
+    '<div class="page" id="pg_holiday">'+
+      '<div class="sec"><h4>ปฏิทินวันหยุด</h4><div id="empCal"></div>'+
+      '<div style="display:flex;gap:14px;margin-top:12px;font-size:16px;color:#4a505a">'+
+        '<span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fdeaea;vertical-align:-1px"></i> วันหยุดราชการ</span>'+
+        '<span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#eef0f2;vertical-align:-1px"></i> วันหยุดประจำสัปดาห์</span>'+
+      '</div></div>'+
+      '<div class="sec"><h4>วันหยุดที่จะถึง</h4><div id="empHolList"></div></div>'+
+    '</div>';
+  bindSlider(a);
+  tick();
+}
+function stCell(icon,color,val,label){return '<div class="st"><span class="ic" style="color:'+color+
+  '">'+svgI(icon,{size:19})+'</span><b>'+val+'</b><span>'+label+'</span></div>';}
+
+/* ---- กล่องสถานะ + แถบสไลด์ ตามสถานะของวัน ---- */
+function hm2min(hhmm){var p=String(hhmm||'0:0').split(':');return (+p[0])*60+(+p[1]);}
+function fmtDur(a){
+  var h=Number(a.workHours);
+  if((!h||isNaN(h)) && a.checkInTime && a.checkOutTime) h=(hm2min(a.checkOutTime)-hm2min(a.checkInTime))/60;
+  if(!h||h<0)h=0;
+  var H=Math.floor(h), M=Math.round((h-H)*60);
+  if(M===60){H++;M=0;}
+  return H+' ชม. '+M+' นาที';
+}
+function slideCtl(action,color,label,icon){
+  return '<div class="slider '+color+'" id="slideCtl" data-action="'+action+'">'+
+    '<div class="slide-fill"></div>'+
+    '<div class="slide-text">'+esc(label)+'</div>'+
+    '<div class="slide-knob">'+svgI(icon,{size:22})+'</div></div>';
+}
+function slideDisabled(label){
+  return '<div class="slider gray disabled">'+
+    '<div class="slide-text">'+esc(label)+'</div>'+
+    '<div class="slide-knob">'+svgI('check',{size:22})+'</div></div>';
+}
+function kv(k,v){return '<div class="sb-cell"><div class="sb-k">'+k+'</div><div class="sb-v">'+esc(v||'-')+'</div></div>';}
+
+function stateArea(a){
+  // เช็คอิน+เอาท์ครบแล้ว → กล่องสรุป + สไลด์เทา (กดไม่ได้ จนถึงเที่ยงคืน)
+  if(a&&a.checkInTime&&a.checkOutTime)
+    return '<div class="statebox done">'+
+      '<div class="sb-badge gray">'+svgI('check',{size:15})+' ทำงานครบแล้ววันนี้</div>'+
+      '<div class="sb-grid">'+kv('เวลาเข้างาน',a.checkInTime)+kv('เวลาออกงาน',a.checkOutTime)+'</div>'+
+      '<div class="sb-total">รวมเวลาทำงานวันนี้ <b>'+fmtDur(a)+'</b></div>'+
+    '</div>'+slideDisabled('เช็คอินครบแล้ววันนี้');
+
+  // กำลังทำงาน → กล่องสถานะ + สไลด์ออกงาน (ส้ม)
+  if(a&&a.checkInTime)
+    return '<div class="statebox working">'+
+      '<div class="sb-badge live"><span class="dot"></span> กำลังทำงาน</div>'+
+      '<div class="sb-timer" id="workTimer">00:00</div>'+
+      '<div class="sb-cap">ระยะเวลาทำงาน (นับจากเวลาเข้างาน)</div>'+
+      '<div class="sb-in">เวลาเข้างาน <b>'+esc(a.checkInTime)+'</b>'+
+        (a.status==='late'?' <span class="late-tag">มาสาย</span>':'')+'</div>'+
+    '</div>'+slideCtl('out','orange','เลื่อนเพื่อออกงาน','logout');
+
+  // วันหยุด → สไลด์เทา กันเช็คอิน
+  if(CTX.todayHoliday)
+    return '<div class="statebox holiday">'+
+      '<div class="sb-badge gray">'+svgI('flag',{size:15})+' วันนี้เป็นวันหยุด</div>'+
+      '<div class="sb-note">'+esc(CTX.todayHolidayName||'วันหยุดประจำสัปดาห์')+'</div>'+
+    '</div>'+slideDisabled('วันหยุด — เช็คอินไม่ได้');
+
+  // วันทำงานปกติ ยังไม่เช็คอิน → สไลด์เข้างาน (เขียว) เปิดตั้งแต่ 00:00
+  return slideCtl('in','green','เลื่อนเพื่อเข้างาน','login');
+}
+
+/* ---- แถบสไลด์: ลากปุ่มจนสุดจึงทำงาน ---- */
+function bindSlider(a){
+  var el=$('slideCtl');
+  if(!el || el.classList.contains('disabled')) return;
+  var action=el.getAttribute('data-action');
+  initSlider(el,function(){ doCheck(action); });
+}
+function initSlider(el,onComplete){
+  var knob=el.querySelector('.slide-knob'), fill=el.querySelector('.slide-fill');
+  var dragging=false, startX=0, cur=0, done=false;
+  function maxX(){ return el.clientWidth - knob.offsetWidth - 10; }
+  function setX(x){ cur=Math.max(0,Math.min(maxX(),x));
+    knob.style.transform='translateX('+cur+'px)';
+    if(fill)fill.style.width=(cur+knob.offsetWidth+5)+'px'; }
+  function pt(e){ return e.touches&&e.touches[0]?e.touches[0].clientX:e.clientX; }
+  function down(e){ if(BUSY||done)return; dragging=true;
+    knob.style.transition='none'; if(fill)fill.style.transition='none';
+    startX=pt(e)-cur; e.preventDefault(); }
+  function move(e){ if(!dragging)return; setX(pt(e)-startX); e.preventDefault(); }
+  function up(){ if(!dragging)return; dragging=false;
+    knob.style.transition=''; if(fill)fill.style.transition='';
+    if(cur>=maxX()*0.9){ done=true; setX(maxX()); el.classList.add('armed'); onComplete(); }
+    else setX(0); }
+  knob.addEventListener('mousedown',down);
+  knob.addEventListener('touchstart',down,{passive:false});
+  document.addEventListener('mousemove',move);
+  document.addEventListener('touchmove',move,{passive:false});
+  document.addEventListener('mouseup',up);
+  document.addEventListener('touchend',up);
+}
+
+/* ============ เช็คอิน/เอาท์ (GPS) — สไลด์แล้วทำเลย ไม่ถามซ้ำ ============ */
+function doCheck(kind){ performCheck(kind); }
+
+function performCheck(kind){
+  if(BUSY) return; BUSY=true;
+  toast(kind==='in'?'กำลังเช็คอิน...':'กำลังเช็คเอาท์...');
+  if(!navigator.geolocation){
+    BUSY=false; showAlert('ไม่รองรับ GPS','อุปกรณ์นี้ไม่รองรับการระบุตำแหน่ง','error',renderHome); return;
+  }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var fn=kind==='in'?'empCheckIn':'empCheckOut';
+    run(fn,TOKEN,pos.coords.latitude,pos.coords.longitude).then(function(r){
+      BUSY=false;
+      if(!r){showAlert('ผิดพลาด','ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์','error',renderHome);return;}
+      if(r.ok){
+        // สำเร็จ ไม่มีปัญหา → ไม่เด้ง popup แค่เปลี่ยนกล่องสถานะ (มาสายขึ้น toast สั้นๆ)
+        if(kind==='in') toast(r.late?('เช็คอินสำเร็จ (มาสาย'+(r.lateMinutes?' '+r.lateMinutes+' นาที':'')+')'):'เช็คอินสำเร็จ');
+        else toast('เช็คเอาท์สำเร็จ');
+        loadCtx();
+      } else handleFail(r,kind);
+    }).catch(function(e){BUSY=false;showAlert('เกิดข้อผิดพลาด',e.message||e,'error',renderHome);});
+  },function(){
+    BUSY=false; showAlert('เข้าถึงตำแหน่งไม่ได้','กรุณาอนุญาตการเข้าถึงตำแหน่ง (GPS) แล้วลองใหม่','error',renderHome);
+  },{enableHighAccuracy:true,timeout:10000});
+}
+
+function handleFail(r,kind){
+  BUSY=false;
+  if(r.reason==='out_of_zone')
+    showAlert('อยู่นอกพื้นที่',
+      'คุณอยู่ห่างจากจุดเช็คอิน '+r.distance+' เมตร (อนุญาตไม่เกิน '+r.radius+' เมตร) กรุณาเข้าใกล้แล้วลองใหม่',
+      'error', renderHome);
+  else if(r.reason==='holiday'){ showAlert('วันนี้เป็นวันหยุด',(r.holidayName||'')+' — ไม่สามารถเช็คอินได้','info', loadCtx); }
+  else if(r.reason==='already_in'){ showAlert('เช็คอินซ้ำ','คุณได้เช็คอินไปแล้ววันนี้','info', loadCtx); }
+  else if(r.reason==='already_out'){ showAlert('เช็คเอาท์ซ้ำ','คุณได้เช็คเอาท์ไปแล้ววันนี้','info', loadCtx); }
+  else if(r.reason==='no_checkin'){ showAlert('ยังไม่ได้เช็คอิน','กรุณาเช็คอินก่อนเช็คเอาท์','info', loadCtx); }
+  else { showAlert('ไม่สำเร็จ','กรุณาลองใหม่อีกครั้ง','error', renderHome); }
+}
+
+/* ============ ประวัติ ============ */
+function loadHistory(){
+  var a=CTX.attendance;
+  var html=a?('<div class="row"><div class="ic">'+svgI('clock',{size:18})+'</div><div class="grow">'+
+    '<div class="t">'+esc(fmtDate(a.date))+' · '+esc(a.dayType||'วันปกติ')+'</div>'+
+    '<div class="s">เข้า '+(a.checkInTime||'-')+' · ออก '+(a.checkOutTime||'-')+
+    (a.lateMinutes?' · สาย '+a.lateMinutes+' นาที':'')+'</div></div>'+
+    '<span class="badge '+(a.status==='late'?'b-pending':'b-approved')+'">'+
+    (a.status==='late'?'สาย':'ปกติ')+'</span></div>')
+    :'<div class="empty">วันนี้ยังไม่มีการเช็คอิน</div>';
+  $('histList').innerHTML=html;
+  if($('teList')) $('teList').innerHTML=timeEditList();
+}
+
+/* โควตาวันลาคงเหลือรายประเภท
+ * แสดงเฉพาะประเภทที่ได้รับสิทธิ์ (assign มาจากฝั่งแอดมิน)
+ * และเฉพาะประเภทที่ตั้งค่าให้แสดงจำนวนวัน (showQuota) */
+function leaveBalanceList(){
+  var all=CTX.leaveBalances||[];
+  if(!all.length)return '<div class="empty">ยังไม่ได้รับสิทธิ์การลา</div>';
+  var b=all.filter(function(x){return x.showQuota!==false;});
+  if(!b.length)return '<div class="empty">ไม่มีประเภทวันลาที่แสดงจำนวนวัน</div>';
+  return '<div class="balist">'+b.map(function(x){
+    var low=x.remaining<=0;
+    return '<div class="barow"><div class="bk">'+esc(x.name)+'</div>'+
+      '<div class="bv"><b style="color:'+(low?'var(--red)':'var(--green)')+'">'+x.remaining+'</b>'+
+      '<span> / '+x.quota+' วัน</span></div></div>';
+  }).join('')+'</div>';
+}
+</script>

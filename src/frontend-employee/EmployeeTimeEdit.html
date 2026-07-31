@@ -1,0 +1,50 @@
+<script>
+/* ============ คำขอแก้เวลาเข้า-ออกงาน (ฝั่งพนักงาน) ============ */
+
+function timeEditList(){
+  var list=CTX.myTimeEdits||[];
+  if(!list.length)return '<div class="empty">ยังไม่มีคำขอแก้เวลา</div>';
+  var bmap={pending:['b-pending','รออนุมัติ'],approved:['b-approved','อนุมัติ'],rejected:['b-rejected','ปฏิเสธ']};
+  return list.map(function(t){
+    var b=bmap[t.status]||bmap.pending;
+    var parts=[];
+    if(t.newCheckIn) parts.push('เข้า → '+esc(t.newCheckIn));
+    if(t.newCheckOut) parts.push('ออก → '+esc(t.newCheckOut));
+    return '<div class="row"><div class="ic">'+svgI('edit',{size:18})+'</div><div class="grow">'+
+      '<div class="t">'+esc(fmtDate(t.date))+'</div>'+
+      '<div class="s">'+parts.join(' · ')+(t.reason?' · '+esc(t.reason):'')+'</div></div>'+
+      '<span class="badge '+b[0]+'">'+b[1]+'</span></div>';
+  }).join('');
+}
+
+function openTimeEditForm(){
+  openSheet(
+    '<h3>ขอแก้ไขเวลา <span class="x" onclick="closeSheet()">'+svgI('x',{size:18})+'</span></h3>'+
+    '<p style="color:var(--muted);font-size:17px;margin-bottom:12px">'+
+      'กรอกเฉพาะช่องที่ต้องการแก้ (เว้นว่างได้) แล้วส่งให้แอดมินอนุมัติ</p>'+
+    '<div class="fld"><label>วันที่ <span class="req">*</span></label>'+
+      '<input type="date" id="te_date" value="'+esc(CTX.today)+'" max="'+esc(CTX.today)+'"></div>'+
+    '<div class="fld"><label>เวลาเข้างานใหม่</label>'+
+      '<input type="time" id="te_ci"></div>'+
+    '<div class="fld"><label>เวลาออกงานใหม่</label>'+
+      '<input type="time" id="te_co"></div>'+
+    '<div class="fld"><label>เหตุผล</label>'+
+      '<input id="te_reason" placeholder="เช่น ลืมกดเช็คเอาท์"></div>'+
+    '<button class="btn-dark" id="te_submit">ส่งคำขอ</button>'+
+    '<button class="btn-out" onclick="closeSheet()">ยกเลิก</button>'
+  );
+  $('te_submit').onclick=submitTimeEdit;
+}
+
+function submitTimeEdit(){
+  var p={date:$('te_date').value, newCheckIn:$('te_ci').value,
+          newCheckOut:$('te_co').value, reason:$('te_reason').value.trim()};
+  if(!p.date){ toast('กรุณาเลือกวันที่'); return; }
+  if(!p.newCheckIn && !p.newCheckOut){ toast('กรอกเวลาเข้าหรือออกอย่างน้อย 1 ช่อง'); return; }
+  var btn=$('te_submit'); btn.disabled=true; btn.textContent='กำลังส่ง...';
+  run('empSubmitTimeEdit',TOKEN,p).then(function(){
+    closeSheet(); toast('ส่งคำขอแล้ว รออนุมัติ'); loadCtx();
+    setTimeout(function(){ if($('pg_history')&&$('pg_history').classList.contains('on')) loadHistory(); },300);
+  }).catch(function(e){ btn.disabled=false; btn.textContent='ส่งคำขอ'; showAlert('ส่งไม่สำเร็จ',e.message||e,'error'); });
+}
+</script>

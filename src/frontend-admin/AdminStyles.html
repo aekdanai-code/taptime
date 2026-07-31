@@ -1,0 +1,199 @@
+<style>
+:root{
+  --bg:#f4f5f7; --card:#ffffff; --ink:#1a1d21; --muted:#8a9099;
+  --line:#e8eaed; --primary:#111318; --blue:#3b6ef5; --blue-soft:#eaf0ff;
+  --green:#12a150; --green-soft:#e7f7ee; --orange:#e8820c; --orange-soft:#fdf3e5;
+  --red:#e03b3b; --red-soft:#fdeaea; --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Noto Sans Thai","Sarabun",system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+.app{display:flex;min-height:100vh}
+
+/* Sidebar */
+.side{width:230px;background:#fff;border-right:1px solid var(--line);
+  padding:20px 14px;position:sticky;top:0;height:100vh;overflow:auto;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px;
+  padding:0 8px 16px}
+.brand .logo{width:26px;height:26px;border-radius:8px;background:var(--primary);
+  color:#fff;display:grid;place-items:center;font-size:14px}
+.line-btn{background:#06c755;color:#fff;border:none;border-radius:10px;
+  padding:11px;width:100%;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:18px}
+.nav-group{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.4px;
+  padding:14px 10px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+  color:#4a505a;cursor:pointer;font-weight:600;margin-bottom:2px}
+.nav-item:hover{background:#f6f7f9}
+.nav-item.active{background:var(--blue-soft);color:var(--blue)}
+.nav-item .ic{width:20px;display:inline-flex;align-items:center;justify-content:center}
+
+/* Main */
+.main{flex:1;min-width:0}
+.topbar{background:#fff;border-bottom:1px solid var(--line);padding:14px 28px;
+  display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+.topbar .biz{font-weight:800;font-size:16px}
+.topbar .who{text-align:right;font-size:12px;color:var(--muted)}
+.topbar .who b{color:var(--ink);font-size:13px}
+.content{padding:26px 28px 60px}
+.page-title{font-size:24px;font-weight:800;margin-bottom:2px}
+.page-sub{color:var(--muted);margin-bottom:22px}
+
+/* Cards / grid */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.card + .card{margin-top:18px}
+.card-head{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.card-head .ic{width:40px;height:40px;border-radius:11px;background:#f1f2f4;
+  color:#111318;display:grid;place-items:center;flex-shrink:0}
+.card-head h3{font-size:16px;font-weight:800}
+.card-head p{color:var(--muted);font-size:12.5px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px}
+.stat{border-radius:var(--radius);padding:18px 20px}
+.stat b{display:block;font-size:30px;font-weight:800;line-height:1}
+.stat span{font-size:13px;font-weight:600}
+.s-green{background:var(--green-soft);color:var(--green)}
+.s-gray{background:#eef0f2;color:#4a505a}
+.s-orange{background:var(--orange-soft);color:var(--orange)}
+.s-blue{background:var(--blue-soft);color:var(--blue)}
+
+/* Form */
+.f-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.f-row.three{grid-template-columns:1fr 1fr 1fr}
+.field label{display:block;font-weight:700;margin-bottom:2px}
+.field .hint{color:var(--muted);font-size:12px;margin-bottom:6px}
+.field .req{color:var(--red)}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:10px;
+  padding:11px 13px;font-family:inherit;font-size:14px;background:#fff;color:var(--ink)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
+input:disabled{background:#f2f3f5;color:var(--muted)}
+textarea{resize:vertical;min-height:70px}
+
+/* Buttons */
+.btn{border:none;border-radius:10px;padding:11px 20px;font-family:inherit;font-weight:700;
+  font-size:13.5px;cursor:pointer}
+.btn-dark{background:var(--primary);color:#fff}
+.btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-sm{padding:7px 13px;font-size:12.5px;border-radius:8px}
+.btn-green{background:#fff;border:1px solid var(--green);color:var(--green)}
+.btn-red{background:#fff;border:1px solid var(--red);color:var(--red)}
+.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:22px}
+
+/* Table */
+.toolbar{display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.toolbar .grow{flex:1;min-width:180px}
+.chips{display:flex;gap:8px;margin-bottom:16px}
+.chip{background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 16px;
+  font-weight:700;cursor:pointer;color:#4a505a}
+.chip.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:700;padding:10px 12px;
+  border-bottom:1px solid var(--line)}
+td{padding:14px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700}
+.t-green{background:var(--green-soft);color:var(--green)}
+.t-orange{background:var(--orange-soft);color:var(--orange)}
+.t-gray{background:#eef0f2;color:#556}
+.t-red{background:var(--red-soft);color:var(--red)}
+.t-blue{background:var(--blue-soft);color:var(--blue)}
+.empty{text-align:center;color:var(--muted);padding:40px}
+.link{color:var(--blue);cursor:pointer;font-weight:700}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(20,22,26,.45);display:none;
+  place-items:center;z-index:50;padding:20px}
+.overlay.open{display:grid}
+.modal{background:#fff;border-radius:18px;padding:26px;width:100%;max-width:440px;
+  max-height:90vh;overflow:auto}
+.modal.wide{max-width:760px}
+.modal h2{text-align:center;font-size:20px;font-weight:800;margin-bottom:6px}
+.modal .msub{text-align:center;color:var(--muted);margin-bottom:20px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--primary);color:#fff;padding:12px 22px;border-radius:10px;
+  font-weight:600;z-index:99;opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1}
+.hide{display:none!important}
+.spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--blue);
+  border-radius:50%;animation:spin .8s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Report (รายงานประจำเดือน) */
+.rep-wrap{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:10px}
+.rep{border-collapse:collapse;font-size:11px;white-space:nowrap}
+.rep th,.rep td{border:1px solid var(--line);padding:6px 6px;text-align:center}
+.rep thead th{background:#fafbfc;position:sticky;top:0;z-index:1}
+.rep th.nm,.rep td.nm{position:sticky;left:0;background:#fff;text-align:left;min-width:150px;
+  font-weight:700;z-index:2}
+.rep thead th.nm{z-index:3}
+.rep td.c-present{background:var(--green-soft);color:var(--green)}
+.rep td.c-late{background:var(--orange-soft);color:var(--orange)}
+.rep td.c-absent{background:var(--red-soft);color:var(--red);font-weight:700}
+.rep td.c-leave{background:var(--blue-soft);color:var(--blue)}
+.rep td.c-holiday{background:#eef0f2;color:#8a9099}
+.rep td.c-future{color:#c8ccd2}
+.rep td.sumcol,.rep th.sumcol{font-weight:700;background:#fafbfc}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 16px;font-size:12.5px;color:#4a505a}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid var(--line)}
+.legend i.lg-present{background:var(--green-soft)}
+.legend i.lg-late{background:var(--orange-soft)}
+.legend i.lg-leave{background:var(--blue-soft)}
+.legend i.lg-absent{background:var(--red-soft)}
+.legend i.lg-holiday{background:#eef0f2}
+
+/* ---- แถบค้นหา + ตัวกรอง (หน้าจัดการพนักงาน) ---- */
+.filterbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.filterbar select{width:auto;min-width:132px;padding:8px 10px;font-size:13.5px}
+.filterbar .fb-search{flex:1;min-width:220px;padding:8px 12px;font-size:13.5px}
+
+/* ---- แบ่งหน้า ---- */
+.pager{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:13.5px;color:#4a505a}
+.pager select{width:auto;padding:6px 8px;font-size:13.5px}
+.pager .pg-left{display:flex;align-items:center;gap:7px}
+.pager .pg-info{color:var(--muted)}
+.pager .pg-btns{margin-left:auto;display:flex;align-items:center;gap:8px}
+.pager .pg-now{font-weight:700}
+.btn.disabled{opacity:.4;pointer-events:none}
+
+/* ---- หัวข้อย่อยในฟอร์ม ---- */
+.fsec{font-weight:800;font-size:13px;color:var(--muted);letter-spacing:.3px;
+  margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.fsec:first-of-type{margin-top:4px}
+
+/* ---- ปฏิทินวันหยุด (คลิกเพิ่ม/แก้ไขได้) ---- */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-hd{text-align:center;font-size:12px;color:var(--muted);font-weight:700;padding:4px}
+.cal-day{min-height:62px;border:1px solid var(--line);border-radius:10px;padding:6px;
+  cursor:pointer;position:relative;transition:.12s}
+.cal-day:hover{border-color:var(--blue);box-shadow:0 2px 10px rgba(59,110,245,.13)}
+.cal-day .dnum{font-weight:700}
+.cal-day .dname{font-size:10px;line-height:1.2;margin-top:2px;word-break:break-word}
+.cal-day .dadd{position:absolute;right:6px;bottom:5px;color:var(--muted);
+  opacity:0;font-size:15px;line-height:1;transition:.12s}
+.cal-day:hover .dadd{opacity:1}
+.cal-day.is-holiday{background:var(--red-soft)}
+.cal-day.is-holiday .dnum,.cal-day.is-holiday .dname{color:var(--red)}
+.cal-day.is-weekend{background:#eef0f2}
+.cal-day.is-weekend .dnum{color:#667}
+.cal-day.is-today{box-shadow:inset 0 0 0 2px var(--blue)}
+
+/* ---- ตาราง assign วันลา ---- */
+.assign-list{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.assign-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.assign-row:last-child{border-bottom:0}
+.assign-row:hover{background:#fafbfc}
+.assign-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--green);margin:0;flex:0 0 auto}
+.assign-row .an{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assign-row .ab{color:var(--muted);font-size:12px}
+.assign-row input[type=number]{width:86px;padding:5px 8px;font-size:13px}
+.assign-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.assign-tools input[type=text]{flex:1;min-width:180px;padding:7px 11px;font-size:13.5px}
+
+/* ---- checkbox ในฟอร์ม ---- */
+.ckline{display:flex;align-items:center;gap:9px;margin:4px 0 14px;cursor:pointer;user-select:none}
+.ckline input{width:18px;height:18px;accent-color:var(--green);margin:0;flex:0 0 auto}
+.ckline .cksub{color:var(--muted);font-size:12.5px}
+
+@media(max-width:820px){.side{display:none}.stat-grid{grid-template-columns:repeat(2,1fr)}
+  .f-row,.f-row.three{grid-template-columns:1fr}}
+</style>
