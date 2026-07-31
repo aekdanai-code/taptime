@@ -216,9 +216,16 @@ node scripts/create-admin.mjs admin@example.com "รหัสผ่านอย�
 > ถ้าลิงก์ที่ส่งออกไปยังชี้ `localhost` ระบบจะเตือนบนหน้าจอทันที
 > แปลว่ายังไม่ได้ตั้ง **Site URL / Redirect URLs** ใน Supabase (ดูข้อ 5.2 ของ `DEPLOY.md`)
 
-> **สำคัญ** SMTP ในตัวของ Supabase จำกัดประมาณ **4 ฉบับ/ชั่วโมง** ใช้ได้แค่ทดสอบ
-> ใช้งานจริงให้ตั้ง Custom SMTP ที่ Supabase Dashboard →
-> Authentication → Emails → SMTP Settings
+> **สำคัญมาก — ต้องตั้ง Custom SMTP ก่อนใช้งานจริง**
+>
+> SMTP ที่ Supabase ให้มาในตัวมีข้อจำกัด 2 ข้อที่ทำให้เชิญพนักงานไม่ได้เลย
+> 1. **ส่งได้เฉพาะอีเมลที่เป็นสมาชิกทีมของ organization** อีเมลอื่นถูกปฏิเสธด้วย
+>    `Email address not authorized`
+> 2. จำกัด **2 ฉบับ/ชั่วโมง** และไม่มี SLA
+>
+> ตั้ง Custom SMTP ที่ Authentication → Emails → SMTP Settings
+> แล้วปรับเพดานที่ Authentication → Rate Limits (หลังตั้งเสร็จค่าเริ่มต้นคือ 30 ฉบับ/ชม.)
+> — ดูขั้นตอนละเอียดใน `DEPLOY.md` ข้อ 5.3
 >
 > และต้องเพิ่ม `https://<โดเมนของคุณ>/set-password` ใน
 > Authentication → URL Configuration → **Redirect URLs** ด้วย ไม่งั้นลิงก์ในอีเมลจะใช้ไม่ได้
@@ -473,7 +480,7 @@ git push -u origin main
 >    — ค่านี้ใช้กำหนด **rpID** ของ passkey ด้วย ถ้าผิด passkey จะยืนยันไม่ผ่าน
 > 2. Supabase → Authentication → URL Configuration → **Site URL** = โดเมนจริง
 >    และเพิ่ม `https://<โดเมน>/set-password` ใน **Redirect URLs**
-> 3. ตั้ง **Custom SMTP** ถ้าจะส่งอีเมลเชิญมากกว่า ~4 ฉบับ/ชั่วโมง
+> 3. ตั้ง **Custom SMTP** — จำเป็นเสมอถ้าจะเชิญพนักงานจริง (ไม่ใช่แค่เรื่องโควตา)
 >
 > หมายเหตุ: passkey ผูกกับโดเมน — ถ้าย้ายโดเมนภายหลัง พนักงานต้องผูกอุปกรณ์ใหม่ทุกคน
 

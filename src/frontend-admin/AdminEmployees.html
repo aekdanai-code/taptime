@@ -185,7 +185,7 @@ function resendInvite(empId){
     '</div>'+
     '<div style="color:var(--muted);font-size:12.5px;line-height:1.7;margin-bottom:4px">'+
       'พนักงานจะได้รับลิงก์สำหรับตั้งรหัสผ่าน ลิงก์ใช้ได้ครั้งเดียวและมีอายุจำกัด<br>'+
-      'หมายเหตุ: SMTP ในตัวของ Supabase จำกัดประมาณ 4 ฉบับ/ชั่วโมง</div>'+
+      'หมายเหตุ: ถ้ายังไม่ได้ตั้ง Custom SMTP จะส่งได้เฉพาะอีเมลของสมาชิกทีมใน Supabase เท่านั้น</div>'+
     '<div class="actions">'+
       '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
       '<button class="btn btn-dark" id="inv_go" onclick="doResendInvite(\''+empId+'\')">ส่งอีเมล</button>'+

@@ -164,12 +164,77 @@ Supabase Dashboard → **Authentication → URL Configuration**
 
 ถ้าไม่ทำ ลิงก์ในอีเมลเชิญตั้งรหัสผ่านจะพาไป `localhost` แล้วใช้ไม่ได้
 
-### 5.3 ตั้ง Custom SMTP (ถ้าจะส่งอีเมลเชิญมากกว่า ~4 ฉบับ/ชั่วโมง)
+### 5.3 ตั้ง Custom SMTP — **บังคับ ไม่ใช่ทางเลือก**
 
-Supabase → **Authentication → Emails → SMTP Settings**
+#### ทำไมต้องทำ
 
-SMTP ในตัวของ Supabase จำกัดประมาณ 4 ฉบับ/ชั่วโมง ใช้ได้แค่ทดสอบ
-ถ้าจะเพิ่มพนักงานหลายคนพร้อมกัน ต้องต่อ SMTP เอง (Resend / SendGrid / Google Workspace)
+SMTP ที่ Supabase แถมมาให้ **ไม่ได้แค่ส่งได้น้อย แต่ส่งหาพนักงานไม่ได้เลย**
+
+| ข้อจำกัดของ SMTP ในตัว | ผลกับ TapTime |
+|---|---|
+| ส่งได้เฉพาะอีเมลที่เป็น **สมาชิกทีมใน organization** ของ Supabase | อีเมลพนักงานทั่วไปถูกปฏิเสธด้วย `Email address not authorized` |
+| จำกัด **2 ฉบับ/ชั่วโมง** | เพิ่มพนักงาน 3 คนติดกันก็ตันแล้ว |
+| ไม่มี SLA | Supabase ระบุเองว่าใช้ได้แค่ทดลอง/เดโม |
+
+หลังตั้ง Custom SMTP เพดานจะเป็น **30 ฉบับ/ชั่วโมง** และปรับเพิ่มเองได้
+
+#### ขั้นตอน (ตัวอย่างด้วย Resend — ฟรี 3,000 ฉบับ/เดือน)
+
+**1. สมัครและยืนยันโดเมน**
+
+1. สมัครที่ [resend.com](https://resend.com)
+2. **Domains → Add Domain** ใส่โดเมนของบริษัท เช่น `example.com`
+3. เอา DNS records ที่ให้มา (SPF / DKIM / DMARC) ไปใส่ในผู้ให้บริการโดเมน
+   รอ verify สักครู่จนขึ้น **Verified**
+
+> ยังไม่มีโดเมน? ใช้ `onboarding@resend.dev` ส่งได้ แต่**ส่งได้เฉพาะอีเมลตัวเอง**
+> จะทดสอบได้ แต่เชิญพนักงานจริงไม่ได้ — สุดท้ายต้องมีโดเมน
+
+**2. สร้าง API key** — Resend → **API Keys → Create** แล้วคัดลอกไว้
+
+**3. กรอกใน Supabase** → **Authentication → Emails → SMTP Settings** → เปิด *Enable Custom SMTP*
+
+| ช่อง | ค่า |
+|---|---|
+| Sender email | `no-reply@example.com` (ต้องเป็นโดเมนที่ verify แล้ว) |
+| Sender name | `TapTime` |
+| Host | `smtp.resend.com` |
+| Port | `465` (SSL) หรือ `587` (STARTTLS) |
+| Username | `resend` |
+| Password | API key จากขั้นตอนที่ 2 |
+
+กด **Save**
+
+**4. ปรับเพดานการส่ง** → **Authentication → Rate Limits**
+
+หา *Rate limit for sending emails* แล้วปรับตามจำนวนพนักงานที่จะเพิ่มต่อชั่วโมง
+(เริ่มต้นหลังตั้ง SMTP = 30/ชม.) เช่นจะเพิ่มพนักงาน 100 คนรวดเดียว ให้ตั้ง ≥ 100
+
+> ค่านี้เป็นเพดานของ **Supabase** ส่วนโควตารวมต่อเดือนเป็นของ **Resend** แยกกัน
+
+**5. ทดสอบ** — เพิ่มพนักงานทดลอง 1 คนด้วยอีเมลที่ไม่ใช่ของคุณ แล้วดูว่าอีเมลถึงไหม
+
+#### ผู้ให้บริการอื่นที่ Supabase รองรับ
+
+| บริการ | Host | Port | Username | โควตาฟรี |
+|---|---|---|---|---|
+| **Resend** | `smtp.resend.com` | 465 / 587 | `resend` | 3,000/เดือน |
+| **Brevo** | `smtp-relay.brevo.com` | 587 | อีเมลที่สมัคร | 300/วัน |
+| **SendGrid** | `smtp.sendgrid.net` | 587 | `apikey` | 100/วัน |
+| **Postmark** | `smtp.postmarkapp.com` | 587 | Server token | 100/เดือน |
+| **AWS SES** | `email-smtp.<region>.amazonaws.com` | 587 | SMTP credentials | ถูกมากเมื่อใช้เยอะ |
+| **Google Workspace** | `smtp.gmail.com` | 587 | อีเมลบริษัท | 2,000/วัน (ต้องใช้ App Password) |
+
+ทั้งหมดใช้วิธีตั้งค่าเหมือนกัน เปลี่ยนแค่ Host / Port / Username / Password
+
+#### ข้อควรรู้เพื่อไม่ให้อีเมลตกถังขยะ
+
+- ตั้ง **SPF, DKIM, DMARC** ให้ครบ (ผู้ให้บริการจะบอก DNS records มาให้)
+- **แยกโดเมนอีเมลระบบออกจากอีเมลการตลาด** เช่น `no-reply@auth.example.com`
+  ถ้าชื่อเสียงของฝั่งการตลาดเสีย จะได้ไม่ลามมาถึงอีเมล login
+- อย่าใส่เนื้อหาโปรโมชันในอีเมลเชิญ — ตัวกรองสแปมจะจัดเป็นอีเมลการตลาดทันที
+- ถ้าจะเพิ่มพนักงานจำนวนมากรวดเดียว แจ้งผู้ให้บริการล่วงหน้า
+  เพราะการส่งพุ่งขึ้นกะทันหันกระทบชื่อเสียงโดเมน
 
 ---
 
@@ -237,7 +302,8 @@ Vercel → **Settings → Domains** → เพิ่มโดเมน แล้
 | `ยังไม่ได้ตั้งค่า NEXT_PUBLIC_SUPABASE_URL` | ใส่ env ไม่ครบ หรือใส่แล้วไม่ได้ Redeploy — env ใหม่มีผลเฉพาะ deploy รอบถัดไป |
 | login ได้แต่เด้งกลับหน้า login ตลอด | `SESSION_SECRET` ไม่ตรงกัน/ว่าง หรือเปลี่ยนค่าแล้ว cookie เดิมใช้ไม่ได้ → ล้าง cookie แล้ว login ใหม่ |
 | ผูก passkey ไม่ได้ / เช็คอินแล้วขึ้น "ยืนยันตัวตนไม่สำเร็จ" | `NEXT_PUBLIC_APP_URL` ไม่ตรงกับโดเมนที่เปิดอยู่ → แก้ให้ตรงแล้ว Redeploy |
-| อีเมลเชิญไม่ถึง | ยังไม่ได้ตั้ง Redirect URLs ใน Supabase หรือชน rate limit ~4 ฉบับ/ชม. → ดูข้อ 5.2 / 5.3 |
+| อีเมลเชิญไม่ถึง / ขึ้น `Email address not authorized` | ยังไม่ได้ตั้ง Custom SMTP — SMTP ในตัวส่งได้เฉพาะอีเมลสมาชิกทีม → ดูข้อ 5.3 |
+| อีเมลเชิญไม่ถึง (ตั้ง SMTP แล้ว) | ชน rate limit หรือโดเมนยังไม่ verify → เช็ก Authentication → Rate Limits และหน้า log ของผู้ให้บริการ |
 | ลิงก์ในอีเมลพาไป localhost | Site URL ใน Supabase ยังเป็น localhost → แก้ตามข้อ 5.2 |
 | Preview deployment ใช้ passkey ไม่ได้ | ปกติ — preview ได้โดเมนสุ่มทุกครั้ง ซึ่งไม่ตรงกับ rpID ให้ทดสอบ passkey บน production เท่านั้น |
 | หน้าแอดมินเปิดบนมือถือแล้วเด้งไปหน้าพนักงาน | ตั้งใจให้เป็นแบบนั้น — ถ้าจำเป็นให้เข้า `/admin?force=1` |

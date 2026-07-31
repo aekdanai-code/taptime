@@ -6,9 +6,15 @@
  *   - ส่งอีเมลตามเทมเพลต "Invite user" ใน Supabase Dashboard
  *   - ลิงก์ในอีเมลพากลับมาที่ /set-password เพื่อตั้งรหัสผ่าน
  *
- * หมายเหตุโควตา: SMTP ในตัวของ Supabase จำกัดประมาณ 4 ฉบับ/ชั่วโมง
- * ถ้าจะใช้งานจริงจัง ให้ตั้ง Custom SMTP ใน Supabase Dashboard
- * (Authentication -> Emails -> SMTP Settings)
+ * ⚠️ ข้อจำกัดของ SMTP ที่ Supabase ให้มาในตัว (ไม่ได้ตั้ง Custom SMTP)
+ *   1. ส่งได้ **เฉพาะอีเมลที่เป็นสมาชิกทีมของ organization** เท่านั้น
+ *      อีเมลอื่นจะถูกปฏิเสธด้วย "Email address not authorized"
+ *      -> เชิญพนักงานจริงไม่ได้เลย ต้องตั้ง Custom SMTP เท่านั้น
+ *   2. จำกัด 2 ฉบับ/ชั่วโมง
+ *   3. ไม่มี SLA — Supabase ระบุว่าไม่เหมาะกับการใช้งานจริง
+ *
+ * ตั้ง Custom SMTP ที่ Authentication -> Emails -> SMTP Settings
+ * แล้วปรับเพดานที่ Authentication -> Rate Limits (ค่าเริ่มต้นหลังตั้ง = 30/ชม.)
  **********************************************************************/
 import { headers } from 'next/headers';
 import { T, findOne, updateByKey, supabaseAdmin } from '../db';
@@ -107,8 +113,14 @@ export async function inviteEmployee(empId: string) {
 
 /** ข้อความ error ของ Supabase -> ภาษาไทยที่เข้าใจง่าย */
 function mapMailError(msg: string) {
-  if (/rate limit|too many/i.test(msg))
-    return 'ส่งอีเมลบ่อยเกินไป (SMTP ในตัวของ Supabase จำกัด ~4 ฉบับ/ชั่วโมง) — ตั้ง Custom SMTP เพื่อส่งได้ไม่จำกัด';
+  // อาการที่พบบ่อยที่สุดตอนยังไม่ได้ตั้ง Custom SMTP
+  if (/not authorized|not_authorized/i.test(msg))
+    return 'ส่งไม่ได้: SMTP ที่ Supabase ให้มาในตัว ส่งได้เฉพาะอีเมลของสมาชิกทีมใน organization ' +
+           'เท่านั้น — ต้องตั้ง Custom SMTP (Authentication → Emails → SMTP Settings) ' +
+           'ถึงจะส่งหาพนักงานได้';
+  if (/rate limit|too many|429/i.test(msg))
+    return 'ส่งอีเมลบ่อยเกินไป — SMTP ในตัวจำกัด 2 ฉบับ/ชม. ' +
+           '(ตั้ง Custom SMTP แล้วจะเป็น 30 ฉบับ/ชม. และปรับเพิ่มได้ที่ Authentication → Rate Limits)';
   if (/smtp|mail/i.test(msg))
     return 'ส่งอีเมลไม่สำเร็จ: ' + msg + ' — ตรวจการตั้งค่า Email ใน Supabase Dashboard';
   return msg;
