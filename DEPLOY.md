@@ -178,7 +178,57 @@ SMTP ที่ Supabase แถมมาให้ **ไม่ได้แค่�
 
 หลังตั้ง Custom SMTP เพดานจะเป็น **30 ฉบับ/ชั่วโมง** และปรับเพิ่มเองได้
 
-#### ขั้นตอน (ตัวอย่างด้วย Resend — ฟรี 3,000 ฉบับ/เดือน)
+#### ยังไม่มีโดเมนบริษัท? ใช้ Gmail ส่งได้เลย (แนะนำสำหรับเริ่มต้น)
+
+Supabase รับ SMTP มาตรฐานทุกเจ้า รวมถึง Gmail — **ไม่ต้องมีโดเมน ไม่ต้องเสียเงิน**
+
+| | Gmail ธรรมดา | Google Workspace |
+|---|---|---|
+| โควตา | **500 ผู้รับ/วัน** | 2,000 ผู้รับ/วัน |
+| ค่าใช้จ่าย | ฟรี | ตามแพ็กเกจ |
+| ที่อยู่ผู้ส่ง | `ชื่อคุณ@gmail.com` | `no-reply@บริษัท.com` |
+
+500 ฉบับ/วัน เกินพอสำหรับการเชิญพนักงาน เพราะแต่ละคนส่งครั้งเดียวตอนเข้าใหม่
+
+**ขั้นตอน**
+
+1. **เปิด 2-Step Verification** ที่ [myaccount.google.com/security](https://myaccount.google.com/security)
+   (ถ้าไม่เปิด จะสร้าง App Password ไม่ได้)
+2. เข้า [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+   ตั้งชื่อว่า `TapTime` แล้วกด **Create**
+   จะได้รหัส 16 ตัวอักษร เช่น `abcd efgh ijkl mnop` — **คัดลอกไว้ ดูได้ครั้งเดียว**
+3. Supabase → **Authentication → Emails → SMTP Settings** → เปิด *Enable Custom SMTP*
+
+| ช่อง | ค่า |
+|---|---|
+| Sender email | อีเมล Gmail ของคุณ (ต้องตรงกับ Username เป๊ะ ๆ) |
+| Sender name | `TapTime` |
+| Host | `smtp.gmail.com` |
+| Port | `587` |
+| Username | อีเมล Gmail ของคุณ |
+| Password | App Password 16 ตัว (ลบเว้นวรรคออก) |
+
+4. **Authentication → Rate Limits** → ปรับ *Rate limit for sending emails* ตามต้องการ
+5. ทดสอบด้วยการเพิ่มพนักงาน 1 คนที่ใช้อีเมลอื่น
+
+**ข้อจำกัดที่ควรรู้**
+
+- Google จะ**บังคับให้ From เป็นอีเมล Gmail ของคุณ** ใส่ชื่ออื่นไม่ได้
+  พนักงานจะเห็นอีเมลมาจาก `ชื่อคุณ@gmail.com` — ใช้ภายในองค์กรถือว่ารับได้
+- ใช้ **App Password เท่านั้น** รหัสผ่าน Gmail ปกติใช้ไม่ได้แล้ว
+- นับเป็น **จำนวนผู้รับ** ไม่ใช่จำนวนฉบับ
+- ถ้าส่งถี่ผิดปกติ Google อาจล็อกบัญชีชั่วคราว — เพิ่มพนักงานทีละไม่เกิน ~50 คนกำลังดี
+- ถ้าโตขึ้นจนอยากให้ดูเป็นทางการ ค่อยซื้อโดเมน (ปีละไม่กี่ร้อยบาท) แล้วย้ายไป Resend
+  **เปลี่ยนแค่ 4 ช่องใน Supabase ไม่ต้องแก้โค้ด**
+
+> **ทำไมไม่ใช้ Brevo/SendGrid กับอีเมล Gmail?**
+> ทั้งสองเจ้าให้ verify อีเมลเดี่ยวได้ก็จริง แต่ตั้งแต่ Gmail/Yahoo บังคับ domain
+> authentication (ก.พ. 2024) ถ้าไม่ได้ยืนยันโดเมน ระบบอาจเปลี่ยน From เป็น
+> `@brevosend.com` ซึ่งดูแปลกกว่าใช้ Gmail ตรง ๆ เสียอีก
+
+---
+
+#### มีโดเมนแล้ว — ใช้ Resend (ฟรี 3,000 ฉบับ/เดือน)
 
 **1. สมัครและยืนยันโดเมน**
 
@@ -223,7 +273,8 @@ SMTP ที่ Supabase แถมมาให้ **ไม่ได้แค่�
 | **SendGrid** | `smtp.sendgrid.net` | 587 | `apikey` | 100/วัน |
 | **Postmark** | `smtp.postmarkapp.com` | 587 | Server token | 100/เดือน |
 | **AWS SES** | `email-smtp.<region>.amazonaws.com` | 587 | SMTP credentials | ถูกมากเมื่อใช้เยอะ |
-| **Google Workspace** | `smtp.gmail.com` | 587 | อีเมลบริษัท | 2,000/วัน (ต้องใช้ App Password) |
+| **Gmail (ฟรี)** | `smtp.gmail.com` | 587 | อีเมล Gmail | 500 ผู้รับ/วัน (ใช้ App Password) |
+| **Google Workspace** | `smtp.gmail.com` | 587 | อีเมลบริษัท | 2,000 ผู้รับ/วัน (ใช้ App Password) |
 
 ทั้งหมดใช้วิธีตั้งค่าเหมือนกัน เปลี่ยนแค่ Host / Port / Username / Password
 

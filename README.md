@@ -225,7 +225,9 @@ node scripts/create-admin.mjs admin@example.com "รหัสผ่านอย�
 >
 > ตั้ง Custom SMTP ที่ Authentication → Emails → SMTP Settings
 > แล้วปรับเพดานที่ Authentication → Rate Limits (หลังตั้งเสร็จค่าเริ่มต้นคือ 30 ฉบับ/ชม.)
-> — ดูขั้นตอนละเอียดใน `DEPLOY.md` ข้อ 5.3
+>
+> **ยังไม่มีโดเมนบริษัท?** ใช้ Gmail + App Password ได้เลย ฟรีและส่งได้ 500 ผู้รับ/วัน
+> — ขั้นตอนละเอียดใน `DEPLOY.md` ข้อ 5.3
 >
 > และต้องเพิ่ม `https://<โดเมนของคุณ>/set-password` ใน
 > Authentication → URL Configuration → **Redirect URLs** ด้วย ไม่งั้นลิงก์ในอีเมลจะใช้ไม่ได้
