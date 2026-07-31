@@ -27,6 +27,7 @@ export const T = {
   LEAVEASSIGN: 'leave_assignments',
   WEBAUTHN: 'webauthn_credentials',
   AUDIT: 'checkin_audit',
+  NOTIFICATIONS: 'notifications',
 } as const;
 
 /* ---------- primary key ของแต่ละตาราง ---------- */
@@ -43,6 +44,7 @@ export const PK: Record<string, string> = {
   [T.LEAVEASSIGN]: 'typeId',
   [T.WEBAUTHN]: 'credentialId',
   [T.AUDIT]: 'auditId',
+  [T.NOTIFICATIONS]: 'notiId',
 };
 
 let _client: SupabaseClient | null = null;
@@ -179,6 +181,7 @@ const NUMERIC_COLS = new Set([
   'lat', 'lng', 'radius', 'breakHours', 'lateThreshold', 'earlyCheckinMin',
   'daysPerYear', 'advanceDays', 'salary', 'lateMinutes', 'otMinutes',
   'workHours', 'checkInLat', 'checkInLng', 'days', 'daysOverride',
+  'breakAfterHours',
 ]);
 const DATE_COLS = new Set([
   'date', 'startDate', 'endDate', 'birthDate', 'expireDate',

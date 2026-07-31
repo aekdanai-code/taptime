@@ -16,6 +16,7 @@
 -- ---------------------------------------------------------------------------
 -- ลบของเดิม (รันซ้ำได้)
 -- ---------------------------------------------------------------------------
+drop table if exists notifications       cascade;
 drop table if exists leave_assignments   cascade;
 drop table if exists checkin_audit        cascade;
 drop table if exists webauthn_credentials cascade;
@@ -58,6 +59,7 @@ create table branches (
   "workStart"       text           default '08:00',
   "workEnd"         text           default '17:00',
   "breakHours"      numeric        default 1,
+  "breakAfterHours" numeric        default 6,    -- หักเบรกเมื่อทำงานถึงกี่ชม. (0 = หักเสมอ)
   "lateThreshold"   numeric        default 15,    -- นาที
   "earlyCheckinMin" numeric        default 30,    -- นาที
   "createdAt"       timestamptz    default now()
@@ -261,6 +263,25 @@ create table checkin_audit (
 create index checkin_audit_emp_idx on checkin_audit("empId", "at" desc);
 
 -- ---------------------------------------------------------------------------
+-- 12. notifications — แจ้งเตือนในแอป (1 แถว = 1 ผู้รับ)
+-- ---------------------------------------------------------------------------
+create table notifications (
+  "notiId"    bigserial primary key,
+  "empId"     text not null,          -- ผู้รับ
+  "type"      text not null,          -- leave_submitted | leave_decided | ...
+  "title"     text not null,
+  "body"      text,
+  "tab"       text,                   -- แท็บปลายทางเมื่อกด
+  "refId"     text,
+  "actorId"   text,
+  "isRead"    boolean     default false,
+  "createdAt" timestamptz default now()
+);
+
+create index noti_emp_idx    on notifications("empId", "createdAt" desc);
+create index noti_unread_idx on notifications("empId") where "isRead" = false;
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ทุกการอ่าน/เขียนของแอปวิ่งผ่าน API route ฝั่งเซิร์ฟเวอร์ด้วย service_role key
 -- (service_role bypass RLS) จึงเปิด RLS ไว้แบบ "ไม่มี policy" = ปิดตายจากฝั่ง
@@ -278,6 +299,7 @@ alter table time_edit_requests enable row level security;
 alter table webauthn_credentials enable row level security;
 alter table checkin_audit         enable row level security;
 alter table leave_assignments     enable row level security;
+alter table notifications         enable row level security;
 
 -- ให้ผู้ใช้ที่ล็อกอินอ่าน profile ของตัวเองได้ (เผื่อใช้ฝั่ง client ในอนาคต)
 create policy "own profile readable"

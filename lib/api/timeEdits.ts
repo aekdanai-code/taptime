@@ -8,6 +8,9 @@ import { T, readObjects, findOne, appendObject, updateByKey } from '../db';
 import { uid, nowStamp, normalizeTimeEdit, asDateStr, asHHMM } from '../helpers';
 import { attendanceOf, writeCheckIn, writeCheckOut } from './attendance';
 import { empByIdentity } from './employeeApi';
+import { notify, notifyAdmins } from './notifications';
+
+const fmtD = (d: string) => String(d || '').split('-').reverse().join('/');
 
 /** พนักงานยื่นคำขอแก้เวลา — payload {date, newCheckIn, newCheckOut, reason} */
 export async function empSubmitTimeEdit(empId: string, payload: any) {
@@ -20,8 +23,9 @@ export async function empSubmitTimeEdit(empId: string, payload: any) {
 
   const existing = await attendanceOf(emp.empId, payload.date);
 
+  const editId = uid('TE-');
   await appendObject(T.TIMEEDITS, {
-    editId: uid('TE-'),
+    editId,
     empId: emp.empId,
     empName: emp.name,
     branchId: emp.branchId,
@@ -35,6 +39,16 @@ export async function empSubmitTimeEdit(empId: string, payload: any) {
     requestedAt: nowStamp(),
     decidedAt: '',
   });
+
+  await notifyAdmins(
+    'timeedit_submitted',
+    'คำขอแก้เวลาใหม่',
+    `${emp.name} ขอแก้เวลาวันที่ ${fmtD(payload.date)}` +
+      (payload.newCheckIn ? ` เข้า ${payload.newCheckIn}` : '') +
+      (payload.newCheckOut ? ` ออก ${payload.newCheckOut}` : ''),
+    { refId: editId, actorId: emp.empId }
+  );
+
   return true;
 }
 
@@ -75,5 +89,16 @@ export async function decideTimeEdit(editId: string, decision: string) {
     status: decision,
     decidedAt: nowStamp(),
   });
+
+  const ok = decision === 'approved';
+  await notify(
+    [found.empId],
+    'timeedit_decided',
+    ok ? 'คำขอแก้เวลาได้รับอนุมัติ' : 'คำขอแก้เวลาถูกปฏิเสธ',
+    `วันที่ ${fmtD(asDateStr(found.date))}` +
+      (ok ? ' ระบบปรับเวลาให้แล้ว' : ' ไม่ได้รับการอนุมัติ'),
+    { refId: editId }
+  );
+
   return true;
 }

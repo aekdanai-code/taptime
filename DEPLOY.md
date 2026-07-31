@@ -119,7 +119,7 @@ gh repo create taptime --private --source=. --remote=origin --push
 
 ## 4. ตั้งค่า Environment Variables
 
-ในหน้า Configure Project กดขยายหัวข้อ **Environment Variables** แล้วใส่ให้ครบ **5 ตัว**
+ในหน้า Configure Project กดขยายหัวข้อ **Environment Variables** แล้วใส่ให้ครบ **6 ตัว**
 
 | Name | Value | เอามาจาก |
 |---|---|---|
@@ -128,6 +128,7 @@ gh repo create taptime --private --source=. --remote=origin --push
 | `SUPABASE_SERVICE_ROLE_KEY` | `eyJhb...` | API → `service_role` **(ห้ามเผยแพร่)** |
 | `SESSION_SECRET` | สุ่มเอง | `openssl rand -hex 32` |
 | `NEXT_PUBLIC_APP_URL` | `https://taptime.vercel.app` | โดเมนที่ Vercel จะให้ (เดาไว้ก่อนได้ เดี๋ยวมาแก้) |
+| `CRON_SECRET` | สุ่มเอง | `openssl rand -hex 32` — ป้องกัน endpoint ที่ Vercel Cron เรียก |
 
 ทุกตัวติ๊กให้ครบทั้ง **Production / Preview / Development**
 

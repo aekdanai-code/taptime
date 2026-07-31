@@ -1,0 +1,264 @@
+<script>
+/* ============================================================================
+ * notify.html — กระดิ่งแจ้งเตือน + badge + รายการ + เสียง
+ * ใช้ร่วมกันทั้งหน้า Admin และ Employee (แทรกโดย build-html.mjs)
+ *
+ * ข้อจำกัดที่ต้องรู้: เบราว์เซอร์บล็อกเสียงที่เล่นเองตอนเปิดหน้า
+ * จึงเล่นเสียงตอน "ผู้ใช้แตะจอครั้งแรก" แทน (ครั้งเดียวต่อการเปิดแอป)
+ * ========================================================================== */
+(function () {
+  'use strict';
+
+  var POLL_MS = 60000;      // เช็คแจ้งเตือนใหม่ทุก 1 นาที
+  var state = { unread: 0, items: [], open: false, loaded: false };
+  var soundArmed = false;   // เล่นเสียงไปแล้วหรือยัง (ครั้งเดียวต่อการเปิดแอป)
+
+  /* ------------------------------------------------------------- เสียง */
+  /**
+   * สร้างเสียงกระดิ่งด้วย WebAudio — ไม่ต้องมีไฟล์เสียง โหลดเร็ว ใช้ออฟไลน์ได้
+   * สองโน้ตสั้น ๆ (E6 -> A6) เสียงใส ไม่รบกวน
+   */
+  function playBell() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ctx = new AC();
+      if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
+      [[1318.5, 0], [1760, 0.13]].forEach(function (n) {
+        var osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = n[0];
+        var t = ctx.currentTime + n[1];
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.22, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.6);
+      });
+      setTimeout(function () { try { ctx.close(); } catch (e) {} }, 1200);
+    } catch (e) { /* เล่นไม่ได้ก็ไม่เป็นไร */ }
+  }
+
+  /** รอให้ผู้ใช้แตะจอครั้งแรก แล้วค่อยเล่นเสียงถ้ายังมีที่ไม่ได้อ่าน */
+  function armSound() {
+    if (soundArmed) return;
+    soundArmed = true;
+    var fire = function () {
+      document.removeEventListener('pointerdown', fire, true);
+      document.removeEventListener('keydown', fire, true);
+      if (state.unread > 0) playBell();
+    };
+    document.addEventListener('pointerdown', fire, true);
+    document.addEventListener('keydown', fire, true);
+  }
+
+  /* ------------------------------------------------------------- ไอคอน */
+  function bellSvg(size) {
+    return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" fill="none" ' +
+      'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M18 8.5a6 6 0 1 0-12 0c0 5.5-2 7-2 7h16s-2-1.5-2-7"/>' +
+      '<path d="M10.4 20.5a2 2 0 0 0 3.2 0"/></svg>';
+  }
+
+  /* ------------------------------------------------------------- รายการ */
+  function fmtWhen(iso) {
+    if (!iso) return '';
+    var d = new Date(iso), now = new Date();
+    if (isNaN(d)) return '';
+    var diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return 'เมื่อครู่';
+    if (diff < 3600) return Math.floor(diff / 60) + ' นาทีที่แล้ว';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' ชั่วโมงที่แล้ว';
+    var p = function (n) { return ('0' + n).slice(-2); };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function esc2(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  var TYPE_COLOR = {
+    leave_submitted: '#3b6ef5', leave_decided: '#12a150',
+    timeedit_submitted: '#e8820c', timeedit_decided: '#12a150',
+    absent: '#e0453b'
+  };
+
+  function listHtml() {
+    if (!state.items.length)
+      return '<div class="tt-noti-empty">ยังไม่มีการแจ้งเตือน</div>';
+    return state.items.map(function (n) {
+      return '<div class="tt-noti-item' + (n.isRead ? '' : ' unread') + '" ' +
+        'data-tab="' + esc2(n.tab || '') + '">' +
+        '<span class="tt-noti-dot" style="background:' + (TYPE_COLOR[n.type] || '#8a9099') + '"></span>' +
+        '<div class="tt-noti-body">' +
+          '<div class="tt-noti-title">' + esc2(n.title) + '</div>' +
+          (n.body ? '<div class="tt-noti-text">' + esc2(n.body) + '</div>' : '') +
+          '<div class="tt-noti-when">' + fmtWhen(n.createdAt) + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function render() {
+    var badge = document.getElementById('ttNotiBadge');
+    if (badge) {
+      badge.textContent = state.unread > 99 ? '99+' : String(state.unread);
+      badge.style.display = state.unread > 0 ? '' : 'none';
+    }
+    var panel = document.getElementById('ttNotiPanel');
+    if (panel && state.open) {
+      panel.querySelector('.tt-noti-list').innerHTML = listHtml();
+      bindItems(panel);
+    }
+  }
+
+  function bindItems(panel) {
+    panel.querySelectorAll('.tt-noti-item').forEach(function (el) {
+      el.onclick = function () {
+        var tab = el.getAttribute('data-tab');
+        closePanel();
+        if (!tab) return;
+        // Admin ใช้ switchTab, Employee ใช้ switchPage
+        if (typeof switchTab === 'function') { try { switchTab(tab); } catch (e) {} }
+        else if (typeof switchPage === 'function') { try { switchPage(tab); } catch (e) {} }
+      };
+    });
+  }
+
+  /* ------------------------------------------------------------- ข้อมูล */
+  function refresh(withList) {
+    var fn = withList ? 'listNotifications' : 'unreadCount';
+    return new Promise(function (res) {
+      google.script.run
+        .withSuccessHandler(function (s) {
+          var d = null;
+          try { d = JSON.parse(s); } catch (e) { d = null; }
+          if (d) {
+            var was = state.unread;
+            state.unread = d.unread || 0;
+            if (d.items) { state.items = d.items; state.loaded = true; }
+            render();
+            // มีของใหม่เข้ามาระหว่างเปิดแอปอยู่ -> เตือนด้วยเสียง
+            if (state.unread > was && soundArmed) playBell();
+          }
+          res(d);
+        })
+        .withFailureHandler(function () { res(null); })
+        [fn]();
+    });
+  }
+
+  function markAllRead() {
+    if (!state.unread) return;
+    google.script.run
+      .withSuccessHandler(function () {
+        state.unread = 0;
+        state.items = state.items.map(function (n) { n.isRead = true; return n; });
+        render();
+      })
+      .withFailureHandler(function () {})
+      .markNotificationsRead(null, null);
+  }
+
+  /* ------------------------------------------------------------- แผงรายการ */
+  function openPanel() {
+    state.open = true;
+    var p = document.createElement('div');
+    p.id = 'ttNotiPanel';
+    p.className = 'tt-noti-panel';
+    p.innerHTML =
+      '<div class="tt-noti-head"><b>การแจ้งเตือน</b>' +
+        '<span class="tt-noti-read">อ่านทั้งหมด</span>' +
+        '<span class="tt-noti-close">&times;</span></div>' +
+      '<div class="tt-noti-list"><div class="tt-noti-empty">กำลังโหลด...</div></div>';
+    document.body.appendChild(p);
+
+    var bd = document.createElement('div');
+    bd.id = 'ttNotiBackdrop';
+    bd.className = 'tt-noti-backdrop';
+    bd.onclick = closePanel;
+    document.body.appendChild(bd);
+
+    p.querySelector('.tt-noti-close').onclick = closePanel;
+    p.querySelector('.tt-noti-read').onclick = markAllRead;
+
+    refresh(true).then(function () {
+      // เปิดดูแล้วถือว่าอ่านแล้ว (หลังจากแสดงผลสักครู่ให้เห็นว่าอันไหนใหม่)
+      setTimeout(markAllRead, 1200);
+    });
+  }
+
+  function closePanel() {
+    state.open = false;
+    var p = document.getElementById('ttNotiPanel');
+    var b = document.getElementById('ttNotiBackdrop');
+    if (p) p.remove();
+    if (b) b.remove();
+  }
+
+  /* ------------------------------------------------------------- ติดตั้ง */
+  /**
+   * @param mount ฟังก์ชันที่รับ element กระดิ่งไปวางในตำแหน่งที่เหมาะกับหน้านั้น
+   * @param size  ขนาดไอคอน
+   */
+  window.ttInitNotify = function (mount, size) {
+    if (document.getElementById('ttNotiBell')) return;   // ติดตั้งแล้ว
+
+    var bell = document.createElement('div');
+    bell.id = 'ttNotiBell';
+    bell.className = 'tt-noti-bell';
+    bell.title = 'การแจ้งเตือน';
+    bell.innerHTML = bellSvg(size || 20) +
+      '<span id="ttNotiBadge" class="tt-noti-badge" style="display:none">0</span>';
+    bell.onclick = function () { state.open ? closePanel() : openPanel(); };
+
+    mount(bell);
+
+    refresh(false).then(function () { armSound(); });
+    setInterval(function () { if (!state.open) refresh(false); }, POLL_MS);
+    // กลับมาที่แท็บอีกครั้ง -> เช็คทันที
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && !state.open) refresh(false);
+    });
+  };
+
+  window.ttNotifyRefresh = function () { return refresh(state.open); };
+})();
+</script>
+<style>
+.tt-noti-bell{position:relative;cursor:pointer;display:inline-flex;align-items:center;
+  justify-content:center;color:#6b7280;transition:.15s}
+.tt-noti-bell:hover{color:#1a1d21}
+.tt-noti-bell:active{transform:scale(.94)}
+.tt-noti-badge{position:absolute;top:-5px;right:-6px;min-width:17px;height:17px;padding:0 4px;
+  border-radius:9px;background:#e0453b;color:#fff;font-size:11px;font-weight:700;
+  line-height:17px;text-align:center;box-shadow:0 0 0 2px #fff}
+.tt-noti-backdrop{position:fixed;inset:0;z-index:998;background:rgba(20,25,35,.28)}
+.tt-noti-panel{position:fixed;z-index:999;background:#fff;border-radius:16px;
+  box-shadow:0 14px 50px rgba(20,25,35,.22);overflow:hidden;
+  top:64px;right:16px;width:min(380px,calc(100vw - 32px));max-height:min(70vh,520px);
+  display:flex;flex-direction:column}
+@media(max-width:520px){
+  .tt-noti-panel{top:auto;bottom:0;right:0;left:0;width:100%;max-height:78vh;
+    border-radius:18px 18px 0 0}
+}
+.tt-noti-head{display:flex;align-items:center;gap:10px;padding:15px 16px;
+  border-bottom:1px solid #eceef1;font-size:16px;flex:0 0 auto}
+.tt-noti-head b{flex:1}
+.tt-noti-read{color:#3b6ef5;font-size:13.5px;cursor:pointer}
+.tt-noti-read:hover{text-decoration:underline}
+.tt-noti-close{font-size:24px;line-height:1;color:#8a9099;cursor:pointer;padding:0 4px}
+.tt-noti-list{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+.tt-noti-item{display:flex;gap:11px;padding:13px 16px;border-bottom:1px solid #f4f5f7;cursor:pointer}
+.tt-noti-item:last-child{border-bottom:0}
+.tt-noti-item:hover{background:#fafbfc}
+.tt-noti-item.unread{background:#f3f7ff}
+.tt-noti-item.unread:hover{background:#e9f0ff}
+.tt-noti-dot{width:9px;height:9px;border-radius:50%;margin-top:6px;flex:0 0 auto}
+.tt-noti-body{min-width:0;flex:1}
+.tt-noti-title{font-weight:700;font-size:14.5px;color:#1a1d21;line-height:1.35}
+.tt-noti-text{color:#4a505a;font-size:13.5px;margin-top:3px;line-height:1.5;word-break:break-word}
+.tt-noti-when{color:#8a9099;font-size:12px;margin-top:4px}
+.tt-noti-empty{padding:34px 16px;text-align:center;color:#8a9099;font-size:14px}
+</style>

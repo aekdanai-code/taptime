@@ -116,7 +116,8 @@ function expand(html, depth = 0) {
   return expand(html.replace(re, (_, name) => readPartial(name)), depth + 1);
 }
 
-const SHIM = readPartial('shim');
+const SHIM   = readPartial('shim');
+const NOTIFY = readPartial('notify');
 
 /** แทรกสคริปต์ทันทีหลัง <body> เพื่อให้ประกาศก่อนสคริปต์ของหน้า */
 function injectHead(html, code) {
@@ -131,7 +132,7 @@ mkdirSync(OUT, { recursive: true });
   let html = expand(readFileSync(join(SRC, 'frontend-admin', 'Admin.html'), 'utf8'));
   html = injectIcons(html, VIEWPORT.admin);
   html = injectHead(html, SHIM);
-  html = html.replace('</body>', `${ADMIN_EXTRA()}\n</body>`);
+  html = html.replace('</body>', `${NOTIFY}\n${ADMIN_EXTRA()}\n</body>`);
   writeFileSync(join(OUT, 'admin.html'), html);
   console.log('  ✓ generated/admin.html');
 }
@@ -148,7 +149,7 @@ mkdirSync(OUT, { recursive: true });
     'var IS_ADMIN = __TAPTIME_IS_ADMIN__;\n' +
     '</script>\n';
   html = injectHead(html, bootstrap + SHIM);
-  html = html.replace('</body>', `${EMPLOYEE_EXTRA()}\n</body>`);
+  html = html.replace('</body>', `${NOTIFY}\n${EMPLOYEE_EXTRA()}\n</body>`);
   writeFileSync(join(OUT, 'employee.html'), html);
   console.log('  ✓ generated/employee.html');
 }
@@ -173,6 +174,9 @@ function ADMIN_EXTRA() {
     cursor:pointer;padding:7px 12px;border:1px solid #e5e7eb;border-radius:9px;
     background:#fff;transition:.15s}
   .tt-logout:hover{color:#e0453b;border-color:#f3c9c6;background:#fff7f6}
+  .tt-bell-admin{position:absolute;right:150px;top:50%;transform:translateY(-50%);
+    width:38px;height:38px;border:1px solid #e5e7eb;border-radius:9px;background:#fff}
+  .tt-bell-admin:active{transform:translateY(-50%) scale(.94)}
 </style>
 <script>
 (function(){
@@ -204,6 +208,14 @@ function ADMIN_EXTRA() {
         .then(function(){ location.href = '/login'; });
     };
     bar.appendChild(b);
+
+    /* กระดิ่งแจ้งเตือน — วางไว้ซ้ายปุ่มออกจากระบบ */
+    if (window.ttInitNotify) {
+      window.ttInitNotify(function (bell) {
+        bell.classList.add('tt-bell-admin');
+        bar.appendChild(bell);
+      }, 21);
+    }
   });
 })();
 </script>`;
@@ -251,6 +263,15 @@ function EMPLOYEE_EXTRA() {
     };
     box.appendChild(out);
     document.body.appendChild(box);
+
+    /* กระดิ่งแจ้งเตือน — ใส่ไว้หน้าสุดของแถบปุ่มลอย */
+    if (window.ttInitNotify) {
+      window.ttInitNotify(function (bell) {
+        var wrap = document.createElement('div');
+        wrap.appendChild(bell);
+        box.insertBefore(wrap, box.firstChild);
+      }, 19);
+    }
 
     /* ---- แผ่นชวนผูกอุปกรณ์ (ถ้าบังคับใช้ passkey แต่ยังไม่ได้ผูก) ---- */
     var wa = (typeof WEBAUTHN !== 'undefined') ? WEBAUTHN : null;

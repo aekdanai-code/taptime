@@ -154,6 +154,77 @@
     };
   }
 
+  /* ==========================================================================
+   * กันกดปุ่มซ้ำ — ทำที่ชั้นนี้ชั้นเดียว ครอบคลุมทุกฟอร์มทั้ง Admin/Employee
+   *
+   * จำปุ่มที่ผู้ใช้เพิ่งกด แล้วพอมีการยิง RPC ตามมา ให้ปิดปุ่มนั้น
+   * พร้อมเปลี่ยนข้อความเป็น "กำลังบันทึก..." จนกว่าจะได้คำตอบ
+   * -> ไม่ต้องแก้ handler ทีละตัวในทุกไฟล์
+   * ======================================================================== */
+  var BTN_SEL = 'button, .btn, .btn-dark, .btn-out, .btn-ghost, .btn-red, .btn-green';
+  var lastBtn = null, lastBtnAt = 0;
+
+  document.addEventListener('click', function (e) {
+    var el = e.target && e.target.closest ? e.target.closest(BTN_SEL) : null;
+    if (el) { lastBtn = el; lastBtnAt = Date.now(); }
+  }, true);
+
+  /** ข้อความระหว่างรอ ตามชนิดของงาน */
+  function busyText(fn) {
+    if (/^save|^setConfig|^setWebauthnExempt/.test(fn)) return 'กำลังบันทึก...';
+    if (/^delete|^del|^revoke/.test(fn))                return 'กำลังลบ...';
+    if (/^decide/.test(fn))                             return 'กำลังดำเนินการ...';
+    if (/^invite|^setEmployeePassword/.test(fn))        return 'กำลังส่ง...';
+    if (/^export/.test(fn))                             return 'กำลังสร้างไฟล์...';
+    if (/^empSubmit/.test(fn))                          return 'กำลังส่งคำขอ...';
+    return 'กำลังทำงาน...';
+  }
+
+  /** ฟังก์ชันที่แค่ "อ่าน" ข้อมูล ไม่ต้องล็อกปุ่ม */
+  function isReadOnly(fn) {
+    return /^(list|get|adminBootstrap|adminDashboard|employeeContext|monthlyReport|dailyReport|unreadCount|leaveAssignSummary)/.test(fn);
+  }
+
+  function lockBtn(fn) {
+    // ปุ่มต้องถูกกดภายใน 1.5 วิ ที่ผ่านมา ถึงถือว่าเป็นต้นเหตุของ RPC นี้
+    if (!lastBtn || Date.now() - lastBtnAt > 1500) return null;
+    var el = lastBtn;
+    lastBtn = null;
+    if (el.dataset && el.dataset.ttBusy) return null;   // ล็อกอยู่แล้ว
+
+    var state = {
+      el: el,
+      html: el.innerHTML,
+      disabled: el.disabled,
+      pe: el.style.pointerEvents,
+      op: el.style.opacity
+    };
+    try {
+      el.dataset.ttBusy = '1';
+      el.innerHTML = busyText(fn);
+      if ('disabled' in el) el.disabled = true;         // <button>
+      el.style.pointerEvents = 'none';                  // <span class="btn">
+      el.style.opacity = '.6';
+      el.setAttribute('aria-busy', 'true');
+    } catch (e) { return null; }
+    return state;
+  }
+
+  function unlockBtn(state) {
+    if (!state) return;
+    var el = state.el;
+    try {
+      delete el.dataset.ttBusy;
+      // ปุ่มอาจถูกถอดออกไปแล้ว (เช่น modal ปิดหลังบันทึกสำเร็จ) — ไม่เป็นไร
+      if (!document.body.contains(el)) return;
+      el.innerHTML = state.html;
+      if ('disabled' in el) el.disabled = state.disabled;
+      el.style.pointerEvents = state.pe;
+      el.style.opacity = state.op;
+      el.removeAttribute('aria-busy');
+    } catch (e) { /* ไม่ต้องทำอะไร */ }
+  }
+
   /* ----------------------------------------------------------- transport */
   function post(fnName, args, extra) {
     var payload = { fn: fnName, args: args };
@@ -183,6 +254,7 @@
 
   function call(fnName, args, onSuccess, onFailure) {
     var chain;
+    var btn = isReadOnly(fnName) ? null : lockBtn(fnName);
 
     if (BIOMETRIC_FNS[fnName] && WA && WA.required) {
       if (!supportsWebAuthn()) {
@@ -213,12 +285,14 @@
 
     chain
       .then(function (data) {
+        unlockBtn(btn);
         if (data === null && !onSuccess) return;
         if (window.__ttAfterRpc) { try { window.__ttAfterRpc(fnName, data); } catch (e) {} }
         /* backend เดิมคืนเป็น JSON string — จำลองพฤติกรรมเดิมให้เป๊ะ */
         if (onSuccess) onSuccess(data === null ? null : JSON.stringify(data));
       })
       .catch(function (e) {
+        unlockBtn(btn);
         if (onFailure) onFailure(e instanceof Error ? e : new Error(String(e)));
         else console.error(e);
       });

@@ -15,6 +15,13 @@ import {
 import { attendanceOf, writeCheckIn, writeCheckOut, getBranch } from './attendance';
 import { holidayMap, weeklyOffArr, dayTypeOf } from './holidays';
 import { entitlementsFor } from './leaveAssign';
+import { notifyAdmins } from './notifications';
+
+/** 'yyyy-MM-dd' -> 'DD/MM/YYYY' สำหรับข้อความแจ้งเตือน */
+function thaiDate(ds: string) {
+  const p = String(ds || '').split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(ds || '');
+}
 
 /**
  * หาพนักงานจาก empId (ที่มาจาก session เท่านั้น)
@@ -136,6 +143,7 @@ export async function employeeContext(empId: string) {
       workStart: branch.workStart,
       workEnd: branch.workEnd,
       breakHours: branch.breakHours,
+      breakAfterHours: branch.breakAfterHours,
       lateThreshold: branch.lateThreshold,
       earlyCheckinMin: branch.earlyCheckinMin,
     },
@@ -355,6 +363,32 @@ export async function empSubmitLeave(empId: string, payload: any) {
       );
   }
 
+  /* ---- กันยื่นลาซ้ำ / ทับกับใบที่มีอยู่แล้ว ----
+   * ทับกันเมื่อ  start1 <= end2  และ  start2 <= end1
+   * นับเฉพาะใบที่ยัง pending หรือ approved (ใบที่ถูกปฏิเสธไม่กันสิทธิ์)
+   */
+  const s = asDateStr(payload.startDate);
+  const e = asDateStr(payload.endDate);
+  if (!s || !e) throw new Error('กรุณาเลือกวันที่เริ่มและวันสิ้นสุด');
+  if (s > e) throw new Error('วันสิ้นสุดต้องไม่ก่อนวันเริ่มลา');
+
+  const mine = await readObjects(T.LEAVES, { empId: emp.empId });
+  const clash = mine
+    .map(normalizeLeave)
+    .filter((l: any) => l.status === 'pending' || l.status === 'approved')
+    .filter((l: any) => String(l.startDate) <= e && s <= String(l.endDate))[0];
+
+  if (clash) {
+    const range =
+      clash.startDate === clash.endDate
+        ? thaiDate(clash.startDate)
+        : `${thaiDate(clash.startDate)} – ${thaiDate(clash.endDate)}`;
+    const st = clash.status === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ';
+    throw new Error(
+      `ช่วงวันที่นี้ทับกับใบลาที่มีอยู่แล้ว: ${clash.leaveType} ${range} (${st})`
+    );
+  }
+
   let days = payload.days;
   if (!days) {
     const d1 = new Date(payload.startDate + 'T00:00:00Z').getTime();
@@ -378,6 +412,16 @@ export async function empSubmitLeave(empId: string, payload: any) {
     decidedAt: '',
   };
   await appendObject(T.LEAVES, req);
+
+  await notifyAdmins(
+    'leave_submitted',
+    'คำขอลาใหม่',
+    `${emp.name} ขอ${payload.leaveType} ${
+      s === e ? thaiDate(s) : `${thaiDate(s)} – ${thaiDate(e)}`
+    } (${days} วัน)`,
+    { refId: req.reqId, actorId: emp.empId }
+  );
+
   return req;
 }
 

@@ -4,8 +4,12 @@
  */
 'use strict';
 
+/** คอลัมน์ที่เป็น bigserial ในฐานข้อมูลจริง -> ต้องสร้างเลขให้เองตอนทดสอบ */
+const AUTO_ID = { notifications: 'notiId', checkin_audit: 'auditId' };
+
 function makeDb(seed) {
   const data = JSON.parse(JSON.stringify(seed));
+  const seq = {};
 
   function builder(table) {
     let rows = () => data[table] || (data[table] = []);
@@ -14,6 +18,8 @@ function makeDb(seed) {
     let payload = null;
     let limitN = null;
     let returning = false;
+    let wantCount = false;
+    let headOnly = false;
 
     const match = (r) =>
       filters.every((f) => {
@@ -21,6 +27,7 @@ function makeDb(seed) {
         if (f.op === 'eq') return String(v) === String(f.v);
         if (f.op === 'gte') return String(v) >= String(f.v);
         if (f.op === 'lte') return String(v) <= String(f.v);
+        if (f.op === 'in') return f.v.some((x) => String(x) === String(v));
         return true;
       });
 
@@ -28,12 +35,27 @@ function makeDb(seed) {
       try {
         if (mode === 'select') {
           let out = rows().filter(match);
+          const total = out.length;
           if (limitN != null) out = out.slice(0, limitN);
-          return { data: out.map((r) => ({ ...r })), error: null };
+          if (headOnly) return { data: null, count: total, error: null };
+          return {
+            data: out.map((r) => ({ ...r })),
+            count: wantCount ? total : undefined,
+            error: null,
+          };
         }
         if (mode === 'insert') {
           const arr = Array.isArray(payload) ? payload : [payload];
-          arr.forEach((r) => rows().push({ ...r }));
+          const auto = AUTO_ID[table];
+          arr.forEach((r) => {
+            const row = { ...r };
+            if (auto && row[auto] === undefined) {
+              seq[table] = (seq[table] || 0) + 1;
+              row[auto] = seq[table];
+            }
+            if (row.createdAt === undefined && auto) row.createdAt = new Date().toISOString();
+            rows().push(row);
+          });
           return { data: arr, error: null };
         }
         if (mode === 'update') {
@@ -65,10 +87,17 @@ function makeDb(seed) {
     };
 
     const api = {
-      select(_cols) { if (mode === 'select') mode = 'select'; else returning = true; return api; },
+      select(_cols, opts) {
+        if (mode === 'select') {
+          if (opts && opts.count) wantCount = true;
+          if (opts && opts.head) headOnly = true;
+        } else returning = true;
+        return api;
+      },
       eq(k, v) { filters.push({ op: 'eq', k, v }); return api; },
       gte(k, v) { filters.push({ op: 'gte', k, v }); return api; },
       lte(k, v) { filters.push({ op: 'lte', k, v }); return api; },
+      in(k, arr) { filters.push({ op: 'in', k, v: arr || [] }); return api; },
       limit(n) { limitN = n; return api; },
       maybeSingle() {
         const r = exec();

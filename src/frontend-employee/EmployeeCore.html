@@ -97,9 +97,33 @@ function tick(){
   }
   var wt=$('workTimer');
   if(wt && CTX && CTX.attendance && CTX.attendance.checkInTime && !CTX.attendance.checkOutTime){
-    var min=Math.max(0,Math.floor((d-ciDate_(CTX.attendance.checkInTime))/60000));
-    wt.textContent=p2_(Math.floor(min/60))+':'+p2_(min%60);
+    var gross=Math.max(0,Math.floor((d-ciDate_(CTX.attendance.checkInTime))/60000));
+    var net=netWorkMinutes(gross);
+    wt.textContent=p2_(Math.floor(net/60))+':'+p2_(net%60);
+    // บอกให้รู้ว่าหักเวลาพักไปแล้ว จะได้ไม่งงว่าเวลาหายไปไหน
+    var cap=$('workCap');
+    if(cap) cap.textContent=(gross!==net)
+      ? 'ระยะเวลาทำงาน (หักพักเบรกแล้ว '+fmtHm_(gross-net)+')'
+      : 'ระยะเวลาทำงาน (นับจากเวลาเข้างาน)';
   }
+}
+
+/**
+ * หักเวลาพักให้ตรงกับสูตรฝั่งเซิร์ฟเวอร์ (computeWorkHours)
+ * หักเมื่อทำงานถึงเกณฑ์ breakAfterHours เท่านั้น (0 = หักเสมอ)
+ * ถ้าไม่หักตรงกัน ตัวนับสดกับยอดรวมหลังเช็คเอาท์จะไม่ตรงกัน
+ */
+function netWorkMinutes(grossMin){
+  var b=(CTX&&CTX.branch)||{};
+  var brk=Number(b.breakHours||0)*60;
+  var after=(b.breakAfterHours===null||b.breakAfterHours===undefined||b.breakAfterHours==='')
+    ? 6*60 : Number(b.breakAfterHours||0)*60;
+  if(brk>0 && grossMin>=after) return Math.max(0,grossMin-brk);
+  return grossMin;
+}
+function fmtHm_(min){
+  var h=Math.floor(min/60), m=min%60;
+  return (h?h+' ชม. ':'')+(m?m+' นาที':(h?'':'0 นาที'));
 }
 setInterval(tick,1000);
 
@@ -181,8 +205,12 @@ function stCell(icon,color,val,label){return '<div class="st"><span class="ic" s
 function hm2min(hhmm){var p=String(hhmm||'0:0').split(':');return (+p[0])*60+(+p[1]);}
 function fmtDur(a){
   var h=Number(a.workHours);
-  if((!h||isNaN(h)) && a.checkInTime && a.checkOutTime) h=(hm2min(a.checkOutTime)-hm2min(a.checkInTime))/60;
-  if(!h||h<0)h=0;
+  // workHours = 0 เป็นค่าที่ถูกต้องได้ (กะสั้นมาก) จึงเช็ค null/undefined/NaN เท่านั้น
+  if((a.workHours===null||a.workHours===undefined||a.workHours===''||isNaN(h))
+     && a.checkInTime && a.checkOutTime){
+    h=netWorkMinutes(hm2min(a.checkOutTime)-hm2min(a.checkInTime))/60;
+  }
+  if(!(h>0))h=0;
   var H=Math.floor(h), M=Math.round((h-H)*60);
   if(M===60){H++;M=0;}
   return H+' ชม. '+M+' นาที';
@@ -214,7 +242,7 @@ function stateArea(a){
     return '<div class="statebox working">'+
       '<div class="sb-badge live"><span class="dot"></span> กำลังทำงาน</div>'+
       '<div class="sb-timer" id="workTimer">00:00</div>'+
-      '<div class="sb-cap">ระยะเวลาทำงาน (นับจากเวลาเข้างาน)</div>'+
+      '<div class="sb-cap" id="workCap">ระยะเวลาทำงาน (นับจากเวลาเข้างาน)</div>'+
       '<div class="sb-in">เวลาเข้างาน <b>'+esc(a.checkInTime)+'</b>'+
         (a.status==='late'?' <span class="late-tag">มาสาย</span>':'')+'</div>'+
     '</div>'+slideCtl('out','orange','เลื่อนเพื่อออกงาน','logout');

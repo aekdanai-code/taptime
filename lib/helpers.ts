@@ -157,6 +157,42 @@ export function toMinutes(hhmm: any): number | null {
   return h * 60 + m;
 }
 
+/**
+ * คำนวณชั่วโมงทำงานสุทธิ — สูตรกลางที่ใช้ร่วมกันทั้งเซิร์ฟเวอร์และตัวนับสด
+ *
+ * ปัญหาของสูตรเดิม: หักเวลาพักทุกกรณี
+ *   ทำงาน 08:00-11:00 (3 ชม.) แต่ยังไม่ได้พักเลย -> ถูกหัก 1 ชม. เหลือ 2 ชม.
+ *   ทำงาน 08:00-08:30 (0.5 ชม.) -> ติดลบ แล้วถูกตัดเป็น 0
+ *
+ * สูตรใหม่: หักเวลาพักเมื่อทำงาน "ถึงเกณฑ์" เท่านั้น
+ *   breakAfterHours = 0 -> หักเสมอ (พฤติกรรมเดิม)
+ *
+ * @param grossMinutes นาทีดิบ (เวลาออก - เวลาเข้า)
+ * @returns { gross, breakDeducted, net } หน่วยชั่วโมง (ปัดทศนิยม 2 ตำแหน่ง)
+ */
+export function computeWorkHours(
+  grossMinutes: number,
+  breakHours: number,
+  breakAfterHours: number
+) {
+  const gross = Math.max(0, Number(grossMinutes) || 0) / 60;
+  const brk = Math.max(0, Number(breakHours) || 0);
+  // ไม่ได้ตั้งค่า (undefined/null) ให้ถือว่า 6 ชม. — ค่าเริ่มต้นของระบบ
+  const after =
+    breakAfterHours === null || breakAfterHours === undefined || breakAfterHours === ('' as any)
+      ? 6
+      : Math.max(0, Number(breakAfterHours) || 0);
+
+  const shouldDeduct = brk > 0 && gross >= after;
+  const net = shouldDeduct ? Math.max(0, gross - brk) : gross;
+
+  return {
+    gross: Math.round(gross * 100) / 100,
+    breakDeducted: shouldDeduct ? brk : 0,
+    net: Math.round(net * 100) / 100,
+  };
+}
+
 /** ระยะทางระหว่างพิกัด 2 จุด (เมตร) — Haversine */
 export function distanceMeters(
   lat1: number,

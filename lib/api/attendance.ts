@@ -9,6 +9,7 @@ import {
 } from '../db';
 import {
   uid, today, nowHHMM, toMinutes, normalizeAtt, normalizeBranch, asDateStr,
+  computeWorkHours,
 } from '../helpers';
 
 /** ดึงข้อมูลสาขาตาม id (normalize เวลาเป็น string แล้ว) */
@@ -100,20 +101,27 @@ export async function writeCheckIn(
 /**
  * เขียนเวลาออก + คำนวณ OT และชั่วโมงงาน
  *   otMinutes = max(0, outMin - endMin)
- *   workHours = max(0, (outMin - inMin)/60 - breakHours)   ปัด 2 ตำแหน่ง
+ *   workHours = computeWorkHours(outMin - inMin, breakHours, breakAfterHours)
+ *
+ * หมายเหตุ: หักเวลาพักเมื่อทำงานถึงเกณฑ์ `breakAfterHours` เท่านั้น
+ * (ของเดิมหักทุกกรณี ทำให้กะสั้น ๆ ได้ชั่วโมงติดลบแล้วถูกตัดเป็น 0)
  */
 export async function writeCheckOut(att: any, time: string) {
   const branch = await getBranch(att.branchId);
   const endMin = toMinutes(branch.workEnd || '17:00') ?? 1020;
   const outMin = toMinutes(time) ?? 0;
   const inMin = toMinutes(att.checkInTime);
-  const breakH = Number(branch.breakHours || 0);
 
   const otMinutes = Math.max(0, outMin - endMin);
-  const workHoursRaw =
-    inMin != null ? Math.max(0, (outMin - inMin) / 60 - breakH) : null;
-  const workHours =
-    workHoursRaw == null ? null : Math.round(workHoursRaw * 100) / 100;
+
+  let workHours: number | null = null;
+  if (inMin != null) {
+    workHours = computeWorkHours(
+      outMin - inMin,
+      Number(branch.breakHours || 0),
+      branch.breakAfterHours
+    ).net;
+  }
 
   await updateByKey(T.ATTENDANCE, 'recId', att.recId, {
     checkOutTime: time,

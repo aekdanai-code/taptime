@@ -108,9 +108,10 @@ async function t(name, fn) {
 
   await t('listEmployees แนบ branchName', async () => {
     const list = await employees.listEmployees();
-    assert.strictEqual(list.length, 1);
-    assert.strictEqual(list[0].name, 'เอกดนัย อมตธรรม');
-    assert.strictEqual(list[0].branchName, 'สำนักงานใหญ่');
+    const me = list.find((e) => e.empId === 'EMP-f3795df3');
+    assert.ok(me, 'ต้องมีพนักงานจากข้อมูลจริง');
+    assert.strictEqual(me.name, 'เอกดนัย อมตธรรม');
+    assert.strictEqual(me.branchName, 'สำนักงานใหญ่');
   });
 
   await t('employeeLink ถูกถอดออกแล้ว (ปุ่มลิงก์/QR ถูกเอาออกจากหน้าจัดการพนักงาน)', () => {
@@ -143,11 +144,13 @@ async function t(name, fn) {
     assert.strictEqual(r.workHours, 7.42); // (1022-517)/60 - 1 = 7.4166 -> 7.42
   });
 
-  await t('writeCheckOut: ออกก่อนเลิกงาน -> OT = 0', async () => {
+  await t('writeCheckOut: ออกก่อนเลิกงาน -> OT = 0 และไม่หักเบรก (ยังไม่ถึงเกณฑ์)', async () => {
     const att = await attendance.attendanceOf('TEST-2', '2026-07-31'); // เข้า 08:10
     const r = await attendance.writeCheckOut(att, '13:37');
     assert.strictEqual(r.otMinutes, 0);
-    assert.strictEqual(r.workHours, 4.45); // (817-490)/60 - 1
+    // (817-490)/60 = 5.45 ชม. ยังไม่ถึงเกณฑ์ 6 ชม. -> ไม่หักเบรก
+    // (กฎเดิมหักเสมอจะได้ 4.45 ซึ่งกินเวลาพนักงานไปฟรี ๆ 1 ชม.)
+    assert.strictEqual(r.workHours, 5.45);
   });
 
   await t('เทียบกับแถวจริงในฐานข้อมูลเดิม (AT-154005fb)', () => {
@@ -527,6 +530,207 @@ async function t(name, fn) {
     await employees.deleteEmployee(r.empId);
   });
 
+  console.log('\n── ชั่วโมงทำงาน / การหักเบรก ───────────────');
+
+  await t('หักเบรกเมื่อทำงานถึงเกณฑ์เท่านั้น', () => {
+    const f = helpers.computeWorkHours;
+    // ทำงาน 9 ชม. เกิน 6 -> หัก 1 ชม.
+    assert.strictEqual(f(9 * 60, 1, 6).net, 8);
+    assert.strictEqual(f(9 * 60, 1, 6).breakDeducted, 1);
+    // ทำงาน 3 ชม. ไม่ถึง 6 -> ไม่หัก (ของเดิมจะได้ 2 ซึ่งผิด)
+    assert.strictEqual(f(3 * 60, 1, 6).net, 3);
+    assert.strictEqual(f(3 * 60, 1, 6).breakDeducted, 0);
+    // พอดีเกณฑ์ -> หัก
+    assert.strictEqual(f(6 * 60, 1, 6).net, 5);
+  });
+
+  await t('กะสั้นมากไม่ติดลบ และไม่ถูกปัดเป็น 0 อีกต่อไป', () => {
+    const f = helpers.computeWorkHours;
+    assert.strictEqual(f(30, 1, 6).net, 0.5, 'ทำงาน 30 นาที ต้องได้ 0.5 ชม.');
+    assert.strictEqual(f(30, 1, 0).net, 0, 'ถ้าตั้งหักเสมอ ต้องไม่ติดลบ');
+    assert.strictEqual(f(-120, 1, 6).net, 0, 'ค่าติดลบต้องกลายเป็น 0');
+  });
+
+  await t('breakAfterHours = 0 -> หักเสมอ (พฤติกรรมเดิม)', () => {
+    assert.strictEqual(helpers.computeWorkHours(3 * 60, 1, 0).net, 2);
+  });
+
+  await t('ไม่ได้ตั้ง breakAfterHours -> ใช้ค่าเริ่มต้น 6 ชม.', () => {
+    assert.strictEqual(helpers.computeWorkHours(3 * 60, 1, undefined).net, 3);
+    assert.strictEqual(helpers.computeWorkHours(3 * 60, 1, null).net, 3);
+    assert.strictEqual(helpers.computeWorkHours(9 * 60, 1, undefined).net, 8);
+  });
+
+  await t('เทียบกับข้อมูลจริง: 08:00-13:37 = 4.62 ชม. (ยังเท่าเดิม)', async () => {
+    // 5.62 ชม. ไม่ถึงเกณฑ์ 6 -> ไม่หักเบรก ผลจึงเป็น 5.62 ไม่ใช่ 4.62
+    // ตรวจว่าสูตรคำนวณตรงตามที่ตั้งใจ (ค่าเก่าในฐานข้อมูลคิดด้วยกฎเดิม)
+    const gross = (13 * 60 + 37) - (8 * 60);
+    assert.strictEqual(helpers.computeWorkHours(gross, 1, 0).net, 4.62, 'กฎเดิม');
+    assert.strictEqual(helpers.computeWorkHours(gross, 1, 6).net, 5.62, 'กฎใหม่');
+  });
+
+  await t('writeCheckOut ใช้สูตรใหม่ (end-to-end)', async () => {
+    const emp = { empId: 'TEST-BRK', name: 'ทดสอบเบรก', branchId: 'BR-e7625e91' };
+    await attendance.writeCheckIn(emp, '2026-07-20', '08:00', 'วันปกติ', null, null);
+    let att = await attendance.attendanceOf('TEST-BRK', '2026-07-20');
+    // 08:00-11:00 = 3 ชม. ไม่ถึงเกณฑ์ 6 -> ต้องได้ 3 ไม่ใช่ 2
+    let r = await attendance.writeCheckOut(att, '11:00');
+    assert.strictEqual(r.workHours, 3);
+
+    att = await attendance.attendanceOf('TEST-BRK', '2026-07-20');
+    r = await attendance.writeCheckOut(att, '17:00');   // 9 ชม. -> หัก 1
+    assert.strictEqual(r.workHours, 8);
+  });
+
+  console.log('\n── กันยื่นลาซ้ำ / ทับช่วงวัน ───────────────');
+
+  await t('ยื่นลาทับกับใบที่อนุมัติแล้ว -> ถูกปฏิเสธ', async () => {
+    // fixture มีใบลาพักร้อน 31/07/2026 (approved)
+    await assert.rejects(
+      () => employeeApi.empSubmitLeave('EMP-f3795df3', {
+        leaveType: 'ลาป่วย', startDate: '2026-07-31', endDate: '2026-07-31', reason: 'x',
+      }),
+      /ทับกับใบลาที่มีอยู่แล้ว/
+    );
+  });
+
+  await t('ทับแบบคาบเกี่ยว (ครอบ / คร่อมหัว / คร่อมท้าย) ถูกจับได้ทุกแบบ', async () => {
+    const cases = [
+      ['2026-07-30', '2026-08-02', 'ครอบทั้งใบเดิม'],
+      ['2026-07-25', '2026-07-31', 'คร่อมหัว'],
+      ['2026-07-31', '2026-08-05', 'คร่อมท้าย'],
+    ];
+    for (const [s, e, label] of cases) {
+      await assert.rejects(
+        () => employeeApi.empSubmitLeave('EMP-f3795df3', {
+          leaveType: 'ลาป่วย', startDate: s, endDate: e, reason: 'x',
+        }),
+        /ทับกับใบลา/,
+        label + ' ไม่ถูกจับ'
+      );
+    }
+  });
+
+  await t('ช่วงที่ไม่ทับกันยื่นได้ตามปกติ', async () => {
+    const r = await employeeApi.empSubmitLeave('EMP-f3795df3', {
+      leaveType: 'ลาป่วย', startDate: '2026-06-01', endDate: '2026-06-02', reason: 'ไข้',
+    });
+    assert.strictEqual(r.days, 2);
+    // ลบทิ้งเพื่อไม่ให้กระทบเทสต์อื่น
+    fake._data.leave_requests = fake._data.leave_requests.filter((l) => l.reqId !== r.reqId);
+  });
+
+  await t('วันสิ้นสุดก่อนวันเริ่ม -> ถูกปฏิเสธ', async () => {
+    await assert.rejects(
+      () => employeeApi.empSubmitLeave('EMP-f3795df3', {
+        leaveType: 'ลาป่วย', startDate: '2026-06-10', endDate: '2026-06-01', reason: 'x',
+      }),
+      /วันสิ้นสุดต้องไม่ก่อนวันเริ่มลา/
+    );
+  });
+
+  await t('ใบที่ถูกปฏิเสธไม่กันสิทธิ์การยื่นใหม่', async () => {
+    fake._data.leave_requests.push({
+      reqId: 'LV-rejected', empId: 'EMP-f3795df3', leaveType: 'ลาป่วย',
+      startDate: '2026-06-15', endDate: '2026-06-16', status: 'rejected', days: 2,
+    });
+    const r = await employeeApi.empSubmitLeave('EMP-f3795df3', {
+      leaveType: 'ลาป่วย', startDate: '2026-06-15', endDate: '2026-06-16', reason: 'ไข้',
+    });
+    assert.ok(r.reqId, 'ควรยื่นได้');
+    fake._data.leave_requests = fake._data.leave_requests
+      .filter((l) => l.reqId !== r.reqId && l.reqId !== 'LV-rejected');
+  });
+
+  console.log('\n── ระบบแจ้งเตือน ───────────────────────────');
+
+  const noti = require(path.join(LIB, 'api/notifications'));
+
+  await t('ยื่นลา -> แจ้งแอดมิน (ไม่แจ้งตัวผู้ยื่นเอง)', async () => {
+    fake._data.notifications.length = 0;
+    const r = await employeeApi.empSubmitLeave('EMP-f3795df3', {
+      leaveType: 'ลาป่วย', startDate: '2026-05-04', endDate: '2026-05-04', reason: 'ไข้',
+    });
+    const rows = fake._data.notifications;
+    assert.strictEqual(rows.length, 1, 'ต้องมี 1 แจ้งเตือน (แอดมิน 1 คน)');
+    assert.strictEqual(rows[0].empId, 'EMP-admin1');
+    assert.strictEqual(rows[0].type, 'leave_submitted');
+    assert.strictEqual(rows[0].isRead, false);
+    assert.ok(/เอกดนัย/.test(rows[0].body), 'ต้องมีชื่อผู้ยื่น');
+    assert.ok(!rows.some((n) => n.empId === 'EMP-f3795df3'), 'ห้ามแจ้งตัวเอง');
+    fake._data.leave_requests = fake._data.leave_requests.filter((l) => l.reqId !== r.reqId);
+  });
+
+  await t('อนุมัติลา -> แจ้งกลับไปหาพนักงาน', async () => {
+    fake._data.notifications.length = 0;
+    const lv = fake._data.leave_requests[0];
+    await leaves.decideLeave(lv.reqId, 'approved');
+    const rows = fake._data.notifications;
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].empId, lv.empId);
+    assert.strictEqual(rows[0].type, 'leave_decided');
+    assert.ok(/อนุมัติ/.test(rows[0].title));
+  });
+
+  await t('ปฏิเสธลา -> ข้อความบอกว่าไม่ได้รับอนุมัติ', async () => {
+    fake._data.notifications.length = 0;
+    const lv = fake._data.leave_requests[0];
+    await leaves.decideLeave(lv.reqId, 'rejected');
+    assert.ok(/ถูกปฏิเสธ/.test(fake._data.notifications[0].title));
+  });
+
+  await t('ยื่นคำขอแก้เวลา -> แจ้งแอดมิน', async () => {
+    fake._data.notifications.length = 0;
+    await timeEdits.empSubmitTimeEdit('EMP-f3795df3', {
+      date: '2026-07-27', newCheckOut: '18:00', reason: 'ลืมเช็คเอาท์',
+    });
+    const rows = fake._data.notifications;
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].type, 'timeedit_submitted');
+    assert.strictEqual(rows[0].empId, 'EMP-admin1');
+  });
+
+  await t('นับ/อ่าน/ล้างแจ้งเตือน ทำงานถูกต้อง', async () => {
+    fake._data.notifications.length = 0;
+    await noti.notify(['EMP-f3795df3'], 'absent', 'ทดสอบ 1', 'body1');
+    await noti.notify(['EMP-f3795df3'], 'absent', 'ทดสอบ 2', 'body2');
+    await noti.notify(['EMP-อื่น'], 'absent', 'ของคนอื่น', 'x');
+
+    assert.strictEqual((await noti.unreadCount('EMP-f3795df3')).unread, 2);
+
+    const list = await noti.listNotifications('EMP-f3795df3');
+    assert.strictEqual(list.unread, 2);
+    assert.strictEqual(list.items.length, 2, 'ต้องเห็นเฉพาะของตัวเอง');
+
+    await noti.markNotificationsRead('EMP-f3795df3');
+    assert.strictEqual((await noti.unreadCount('EMP-f3795df3')).unread, 0);
+    // ของคนอื่นต้องไม่ถูกอ่านไปด้วย
+    assert.strictEqual((await noti.unreadCount('EMP-อื่น')).unread, 1);
+  });
+
+  await t('อ่านเฉพาะบางรายการได้', async () => {
+    fake._data.notifications.length = 0;
+    await noti.notify(['EMP-x'], 'absent', 'a', '');
+    await noti.notify(['EMP-x'], 'absent', 'b', '');
+    const before = await noti.listNotifications('EMP-x');
+    await noti.markNotificationsRead('EMP-x', [before.items[0].notiId]);
+    assert.strictEqual((await noti.unreadCount('EMP-x')).unread, 1);
+  });
+
+  await t('แจ้งเตือนใช้ได้ทั้งแอดมินและพนักงาน และตัวตนมาจาก session', () => {
+    const rpc2 = require(path.join(LIB, 'rpc'));
+    ['listNotifications', 'unreadCount', 'markNotificationsRead'].forEach((fn) => {
+      assert.ok(rpc2.REGISTRY[fn], 'ไม่มี ' + fn);
+      assert.ok(rpc2.EMPLOYEE_FNS.has(fn), fn + ' ต้องถูกเขียนทับ empId จาก session');
+      assert.ok(!rpc2.ADMIN_FNS.has(fn), fn + ' ไม่ควรจำกัดเฉพาะแอดมิน');
+    });
+    // ยิงมาด้วย empId คนอื่นก็ต้องถูกเขียนทับ
+    assert.strictEqual(
+      rpc2.applyIdentity('listNotifications', ['EMP-เหยื่อ'], { empId: 'EMP-ฉัน' })[0],
+      'EMP-ฉัน'
+    );
+  });
+
   console.log('\n── การเชื่อมต่อ frontend <-> backend ────────');
 
   const fs = require('fs');
@@ -746,6 +950,67 @@ async function t(name, fn) {
   await t('หน้าพนักงาน: ซ่อนโควตาของประเภทที่ตั้งค่าไม่ให้แสดง', () => {
     const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
     assert.ok(h.includes('x.showQuota!==false'), 'ไม่ได้กรองตาม showQuota');
+  });
+
+  await t('กันกดปุ่มซ้ำ: มีอยู่ทั้งหน้า admin และ employee', () => {
+    for (const page of ['admin.html', 'employee.html']) {
+      const h = fs.readFileSync(path.join(GEN, page), 'utf8');
+      ['lockBtn(', 'unlockBtn(', 'busyText(', 'ttBusy', 'กำลังบันทึก...']
+        .forEach((k) => assert.ok(h.includes(k), page + ' ขาด ' + k));
+      // ต้องปิดทั้ง <button> และ <span class="btn">
+      assert.ok(h.includes("el.style.pointerEvents = 'none'"), page + ': ไม่ได้ปิด span');
+      assert.ok(/if \('disabled' in el\) el\.disabled = true/.test(h),
+        page + ': ไม่ได้ปิด button');
+      // ต้องปลดล็อกทั้งตอนสำเร็จและตอน error
+      assert.strictEqual((h.match(/unlockBtn\(btn\)/g) || []).length, 2,
+        page + ': ต้องปลดล็อกทั้ง then และ catch');
+    }
+  });
+
+  await t('กันกดปุ่มซ้ำ: ฟังก์ชันอ่านข้อมูลไม่ล็อกปุ่ม', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    const m = h.match(/function isReadOnly\(fn\) \{\s*return (\/[^/]+\/)\.test/);
+    assert.ok(m, 'ไม่พบ isReadOnly');
+    const re = new RegExp(m[1].slice(1, -1));
+    ['listEmployees', 'adminBootstrap', 'employeeContext', 'dailyReport', 'unreadCount']
+      .forEach((fn) => assert.ok(re.test(fn), fn + ' ควรถูกยกเว้น'));
+    ['saveEmployee', 'decideLeave', 'deleteHoliday', 'empSubmitLeave']
+      .forEach((fn) => assert.ok(!re.test(fn), fn + ' ต้องล็อกปุ่ม'));
+  });
+
+  await t('กระดิ่งแจ้งเตือน: ติดตั้งทั้ง admin และ employee', () => {
+    for (const page of ['admin.html', 'employee.html']) {
+      const h = fs.readFileSync(path.join(GEN, page), 'utf8');
+      ['ttInitNotify', 'ttNotiBadge', 'tt-noti-panel', 'playBell', 'armSound']
+        .forEach((k) => assert.ok(h.includes(k), page + ' ขาด ' + k));
+      assert.ok(h.includes("'listNotifications'") || h.includes('listNotifications'),
+        page + ': ไม่ได้เรียก listNotifications');
+    }
+  });
+
+  await t('เสียงกระดิ่งรอ user gesture (เบราว์เซอร์บล็อก autoplay)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes("addEventListener('pointerdown', fire, true)"),
+      'ต้องรอการแตะจอครั้งแรก');
+    assert.ok(h.includes('if (state.unread > 0) playBell()'),
+      'ต้องเล่นเฉพาะเมื่อมีที่ยังไม่อ่าน');
+    // ห้ามเรียก playBell ตรง ๆ ตอนโหลด
+    assert.ok(!/window\.addEventListener\('load'[^)]*playBell/.test(h),
+      'ห้ามเล่นเสียงทันทีตอนโหลดหน้า');
+  });
+
+  await t('ตัวนับสดหักเบรกด้วยสูตรเดียวกับเซิร์ฟเวอร์', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes('function netWorkMinutes('), 'ขาด netWorkMinutes');
+    assert.ok(h.includes('netWorkMinutes(gross)'), 'ตัวนับสดไม่ได้หักเบรก');
+    assert.ok(h.includes('breakAfterHours'), 'ไม่ได้ใช้เกณฑ์หักเบรก');
+    assert.ok(h.includes('หักพักเบรกแล้ว'), 'ควรบอกผู้ใช้ว่าหักเบรกไปเท่าไร');
+  });
+
+  await t('หน้าตั้งค่าสาขามีช่องเกณฑ์หักเบรก', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes('b_breakafter'), 'ขาดช่องกรอก');
+    assert.ok(h.includes('breakAfterHours:'), 'ไม่ได้ส่งค่าไปบันทึก');
   });
 
   await t('generated/login.html มีช่อง "จดจำฉันไว้"', () => {

@@ -42,8 +42,13 @@ function renderSettings(){
       '<div class="f-row three">'+
         fld('เวลาเริ่มงาน',true,'<input id="b_wstart" type="time" value="'+esc(b.workStart||'08:00')+'">')+
         fld('เวลาเลิกงาน',true,'<input id="b_wend" type="time" value="'+esc(b.workEnd||'17:00')+'">')+
-        fld('ชั่วโมงพัก/วัน',true,'<input id="b_break" type="number" step="0.5" value="'+esc(b.breakHours||1)+'">')+
+        fld('ชั่วโมงพัก/วัน',true,'<input id="b_break" type="number" min="0" step="0.5" value="'+esc(b.breakHours||1)+'">')+
       '</div>'+
+      '<div class="field"><label>หักเวลาพักเมื่อทำงานถึง (ชั่วโมง)</label>'+
+        '<div class="hint">ทำงานไม่ถึงจำนวนนี้จะไม่ถูกหักเวลาพัก · ใส่ 0 = หักทุกกรณี</div>'+
+        '<input id="b_breakafter" type="number" min="0" step="0.5" value="'+
+          esc(b.breakAfterHours===0?0:(b.breakAfterHours||6))+'"></div>'+
+      '<div style="height:16px"></div>'+
       '<div class="f-row">'+
         fld('เกณฑ์การมาสาย (นาที)',true,'<input id="b_late" type="number" value="'+esc(b.lateThreshold||15)+'">')+
         fld('เช็คอินก่อนเวลาได้ (นาที)',false,'<input id="b_early" type="number" value="'+esc(b.earlyCheckinMin||30)+'">')+
@@ -103,6 +108,7 @@ function saveSettingsAll(branchId){
   var branch={branchId:branchId,name:$('b_name').value,code:$('b_code').value,
     address:$('b_addr').value,lat:$('b_lat').value,lng:$('b_lng').value,radius:$('b_radius').value,
     workStart:$('b_wstart').value,workEnd:$('b_wend').value,breakHours:$('b_break').value,
+    breakAfterHours:$('b_breakafter').value,
     lateThreshold:$('b_late').value,earlyCheckinMin:$('b_early').value};
   run('saveBranch',branch).then(function(){toast('บันทึกข้อมูลสาขาแล้ว');return run('adminBootstrap');})
     .then(function(b){BOOT=b;});

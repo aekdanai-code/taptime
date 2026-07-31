@@ -31,6 +31,9 @@ import { monthlyReport, dailyReport, exportMonthlyReportXlsx } from './api/repor
 import {
   listLeaveAssignments, saveLeaveAssignments, leaveAssignSummary,
 } from './api/leaveAssign';
+import {
+  listNotifications, unreadCount, markNotificationsRead,
+} from './api/notifications';
 
 type Fn = (...args: any[]) => any;
 
@@ -59,6 +62,8 @@ export const ADMIN_FNS = new Set([
 export const EMPLOYEE_FNS = new Set([
   'employeeContext', 'empCheckIn', 'empCheckOut',
   'empSubmitLeave', 'empSubmitTimeEdit',
+  // แจ้งเตือน — ใช้ได้ทั้งแอดมินและพนักงาน ตัวตนมาจาก session เสมอ
+  'listNotifications', 'unreadCount', 'markNotificationsRead',
 ]);
 
 /**
@@ -109,6 +114,8 @@ export const REGISTRY: Record<string, Fn> = {
   saveLeaveType, deleteLeaveType,
   /* Leave assignments */
   listLeaveAssignments, saveLeaveAssignments, leaveAssignSummary,
+  /* Notifications */
+  listNotifications, unreadCount, markNotificationsRead,
   /* Reports */
   monthlyReport, dailyReport, exportMonthlyReportXlsx,
 };
