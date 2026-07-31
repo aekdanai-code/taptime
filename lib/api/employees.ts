@@ -63,7 +63,8 @@ export async function saveEmployee(emp: any) {
     try {
       const { inviteEmployee } = await import('./invite');
       const r = await inviteEmployee(emp.empId);
-      return { empId: emp.empId, invited: true, email: r.email, mode: r.mode };
+      return { empId: emp.empId, invited: true, email: r.email, mode: r.mode,
+               redirectTo: r.redirectTo };
     } catch (e: any) {
       return { empId: emp.empId, invited: false, inviteError: e?.message || String(e) };
     }

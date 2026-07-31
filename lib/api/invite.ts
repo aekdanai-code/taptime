@@ -10,10 +10,39 @@
  * ถ้าจะใช้งานจริงจัง ให้ตั้ง Custom SMTP ใน Supabase Dashboard
  * (Authentication -> Emails -> SMTP Settings)
  **********************************************************************/
+import { headers } from 'next/headers';
 import { T, findOne, updateByKey, supabaseAdmin } from '../db';
 
-function appUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+/**
+ * หา URL ของเว็บสำหรับใส่ในลิงก์อีเมล
+ *
+ * ลำดับความน่าเชื่อถือ:
+ *   1. โดเมนที่แอดมิน "กำลังเปิดอยู่จริง" (จาก header ของ request)
+ *      — แม่นที่สุด และไม่พังแม้ลืมตั้ง/ลืม redeploy env
+ *   2. NEXT_PUBLIC_APP_URL ที่ตั้งไว้
+ *   3. VERCEL_URL ที่ Vercel ใส่ให้อัตโนมัติ
+ *   4. localhost (ตอน dev)
+ *
+ * เดิมใช้แค่ข้อ 2 อย่างเดียว ซึ่งมีปัญหาเพราะ Next.js ฝังค่า NEXT_PUBLIC_*
+ * ตั้งแต่ตอน build — แก้ค่าใน Vercel แล้วไม่ redeploy ค่าเก่าจะยังติดอยู่
+ */
+export function appUrl(): string {
+  try {
+    const h = headers();
+    const host = h.get('x-forwarded-host') || h.get('host');
+    if (host && !/^localhost|^127\.0\.0\.1/.test(host)) {
+      const proto = h.get('x-forwarded-proto') || 'https';
+      return `${proto}://${host}`;
+    }
+    if (host) return `http://${host}`;
+  } catch {
+    /* เรียกนอก request context — ข้ามไปใช้ env แทน */
+  }
+
+  const env = process.env.NEXT_PUBLIC_APP_URL;
+  if (env) return env.replace(/\/+$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
 }
 
 /** ค้นหา auth user จากอีเมล (Supabase ยังไม่มี getUserByEmail ตรง ๆ) */
@@ -59,7 +88,7 @@ export async function inviteEmployee(empId: string) {
     await updateByKey(T.PROFILES, 'empId', empId, {
       invitedAt: new Date().toISOString(),
     });
-    return { ok: true, mode: 'reset', email };
+    return { ok: true, mode: 'reset', email, redirectTo };
   }
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
@@ -73,7 +102,7 @@ export async function inviteEmployee(empId: string) {
     invitedAt: new Date().toISOString(),
   });
 
-  return { ok: true, mode: 'invite', email };
+  return { ok: true, mode: 'invite', email, redirectTo };
 }
 
 /** ข้อความ error ของ Supabase -> ภาษาไทยที่เข้าใจง่าย */

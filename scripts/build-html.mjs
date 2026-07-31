@@ -165,7 +165,11 @@ function ADMIN_EXTRA() {
     setTimeout(function(){
       if(typeof toast !== 'function') return;
       if(data.invited){
-        toast('ส่งอีเมลตั้งรหัสผ่านไปที่ ' + data.email + ' แล้ว');
+        if(data.redirectTo && /localhost|127\\.0\\.0\\.1/.test(data.redirectTo)){
+          toast('ส่งอีเมลแล้ว แต่ลิงก์ชี้ไป ' + data.redirectTo + ' — ตรวจ Site URL ใน Supabase');
+        } else {
+          toast('ส่งอีเมลตั้งรหัสผ่านไปที่ ' + data.email + ' แล้ว');
+        }
       } else if(data.inviteError){
         toast('บันทึกแล้ว แต่ส่งอีเมลไม่สำเร็จ: ' + data.inviteError);
       }
