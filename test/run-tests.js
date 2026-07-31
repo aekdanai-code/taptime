@@ -645,6 +645,44 @@ async function t(name, fn) {
       .forEach((k) => assert.ok(h.includes(k), 'ขาดหมวด ' + k));
   });
 
+  await t('หน้าจัดการพนักงาน: มีปุ่มส่งอีเมลเชิญใหม่ + สถานะบัญชี', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['resendInvite(', 'doResendInvite(', 'accountState(', "run('inviteEmployee'"]
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    // สถานะบัญชีครบ 4 แบบ
+    ['ไม่มีอีเมล', 'ยังไม่ได้เชิญ', 'รอตั้งรหัสผ่าน', 'พร้อมใช้งาน']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาดสถานะ ' + k));
+    assert.ok(h.includes('<th>บัญชีผู้ใช้</th>'), 'ขาดคอลัมน์บัญชีผู้ใช้');
+    // ปุ่มต้องเตือนถ้าลิงก์ยังชี้ localhost
+    assert.ok(h.includes('ตรวจ Site URL ใน Supabase'), 'ขาดคำเตือน localhost');
+    assert.ok(h.includes("mail:'<rect"), 'ขาดไอคอน mail');
+  });
+
+  await t('inviteEmployee เรียกได้และเป็นสิทธิ์แอดมินเท่านั้น', () => {
+    const rpc2 = require(path.join(LIB, 'rpc'));
+    assert.ok(typeof rpc2.REGISTRY.inviteEmployee === 'function', 'ไม่มีใน REGISTRY');
+    assert.ok(rpc2.ADMIN_FNS.has('inviteEmployee'), 'ต้องเป็นสิทธิ์แอดมิน');
+    assert.ok(!rpc2.EMPLOYEE_FNS.has('inviteEmployee'), 'พนักงานต้องเรียกไม่ได้');
+  });
+
+  await t('appUrl(): ใช้โดเมนจาก env เมื่ออยู่นอก request context', () => {
+    const invite = require(path.join(LIB, 'api/invite'));
+    const before = process.env.NEXT_PUBLIC_APP_URL;
+
+    process.env.NEXT_PUBLIC_APP_URL = 'https://taptime-three.vercel.app/';
+    assert.strictEqual(invite.appUrl(), 'https://taptime-three.vercel.app',
+      'ต้องตัด / ท้ายออก');
+
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    process.env.VERCEL_URL = 'taptime-three.vercel.app';
+    assert.strictEqual(invite.appUrl(), 'https://taptime-three.vercel.app',
+      'ต้อง fallback ไป VERCEL_URL');
+
+    delete process.env.VERCEL_URL;
+    assert.strictEqual(invite.appUrl(), 'http://localhost:3000');
+    process.env.NEXT_PUBLIC_APP_URL = before;
+  });
+
   await t('เมนูวันหยุด: ไม่มีตารางวันหยุดแล้ว แต่คลิกปฏิทินได้', () => {
     const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
     assert.ok(!h.includes('วันหยุดราชการ / วันหยุดพิเศษ</h3>'),

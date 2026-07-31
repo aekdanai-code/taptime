@@ -46,17 +46,24 @@ function drawEmpPage(){
       : '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#e7eaee;color:#556;vertical-align:middle;margin-right:8px">'+svgI('user',{size:19})+'</span>';
     var inactive=String(e.status||'active').toLowerCase()==='inactive';
     var nick=e.nickname?' <span style="color:var(--muted);font-weight:400">('+esc(e.nickname)+')</span>':'';
+    var acc=accountState(e);
     return '<tr'+(inactive?' style="opacity:.55"':'')+'>'+
       '<td>'+(from+i+1)+'</td>'+
       '<td>'+av+'<b>'+esc(e.name)+'</b>'+nick+
         '<br><span style="color:var(--muted);font-size:12px;margin-left:42px">'+esc(e.phone||'')+'</span></td>'+
       '<td>'+esc(e.branchName||'')+'</td>'+
-      '<td>'+esc(e.position||'')+'</td>'+
-      '<td>'+esc(e.salaryType||'')+'</td>'+
+      '<td>'+esc(e.position||'')+
+        (e.salaryType?'<div style="color:var(--muted);font-size:11.5px;margin-top:2px">'+esc(e.salaryType)+'</div>':'')+'</td>'+
       '<td>'+(inactive
         ? '<span class="tag t-gray">ลาออก</span>'
         : '<span class="tag t-green">ทำงานอยู่</span>')+'</td>'+
-      '<td>'+
+      '<td><span class="tag '+acc.cls+'" title="'+esc(acc.tip)+'">'+acc.label+'</span>'+
+        (e.email?'<div style="color:var(--muted);font-size:11.5px;margin-top:3px">'+esc(e.email)+'</div>':'')+'</td>'+
+      '<td class="act">'+
+        (e.email
+          ? '<span class="btn btn-sm btn-green" title="'+esc(acc.btnTip)+'" onclick="resendInvite(\''+e.empId+'\')">'+
+              svgI('mail',{size:15})+' '+acc.btnText+'</span> '
+          : '')+
         '<span class="btn btn-sm btn-ghost" onclick="editEmp(\''+e.empId+'\')">แก้ไข</span> '+
         '<span class="btn btn-sm btn-red" onclick="delEmp(\''+e.empId+'\')">ลบ</span>'+
       '</td></tr>';
@@ -94,7 +101,7 @@ function drawEmpPage(){
       '</div>'+
 
       '<table><thead><tr><th>ลำดับ</th><th>ชื่อ</th><th>สาขา</th><th>ตำแหน่ง</th>'+
-      '<th>ประเภทเงินเดือน</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+
+      '<th>สถานะ</th><th>บัญชีผู้ใช้</th><th>จัดการ</th></tr></thead><tbody>'+
       (rows||'<tr><td colspan="7" class="empty">'+
         ((window._emps||[]).length?'ไม่พบพนักงานที่ตรงเงื่อนไข':'ยังไม่มีพนักงาน — กดปุ่มเพิ่มเพื่อสร้างรายการใหม่')+
         '</td></tr>')+
@@ -116,6 +123,92 @@ function drawEmpPage(){
   var qEl=$('emp_q');
   qEl.oninput=function(){ EMP_STATE.q=this.value; EMP_STATE.page=1; drawEmpPage();
     var el=$('emp_q'); el.focus(); el.setSelectionRange(el.value.length,el.value.length); };
+}
+
+/**
+ * สถานะบัญชีผู้ใช้ของพนักงาน 1 คน
+ *   ไม่มีอีเมล        -> ยังเข้าใช้ระบบไม่ได้เลย
+ *   มีอีเมล ยังไม่เชิญ -> รอส่งอีเมลเชิญ
+ *   เชิญแล้ว ยังไม่เคย login -> รอพนักงานตั้งรหัสผ่าน
+ *   เคย login แล้ว    -> พร้อมใช้งาน
+ */
+function accountState(e){
+  if(!e.email) return {
+    cls:'t-gray', label:'ไม่มีอีเมล',
+    tip:'ยังเข้าใช้ระบบไม่ได้ — กรอกอีเมลก่อน ระบบจะส่งคำเชิญให้อัตโนมัติ',
+    btnText:'', btnTip:''
+  };
+  if(e.lastLoginAt) return {
+    cls:'t-green', label:'พร้อมใช้งาน',
+    tip:'เข้าสู่ระบบล่าสุด '+fmtStamp(e.lastLoginAt),
+    btnText:'ส่งลิงก์ตั้งรหัสใหม่',
+    btnTip:'ส่งอีเมลลิงก์ตั้งรหัสผ่านใหม่ (กรณีพนักงานลืมรหัส)'
+  };
+  if(e.invitedAt) return {
+    cls:'t-orange', label:'รอตั้งรหัสผ่าน',
+    tip:'ส่งคำเชิญเมื่อ '+fmtStamp(e.invitedAt)+' — ยังไม่เคยเข้าสู่ระบบ',
+    btnText:'ส่งอีเมลเชิญใหม่',
+    btnTip:'ส่งอีเมลเชิญตั้งรหัสผ่านอีกครั้ง (ลิงก์เดิมอาจหมดอายุ)'
+  };
+  return {
+    cls:'t-gray', label:'ยังไม่ได้เชิญ',
+    tip:'มีอีเมลแล้วแต่ยังไม่เคยส่งคำเชิญ',
+    btnText:'ส่งอีเมลเชิญ',
+    btnTip:'ส่งอีเมลเชิญให้พนักงานตั้งรหัสผ่าน'
+  };
+}
+
+/** timestamp ISO -> 'DD/MM/YYYY HH:mm' */
+function fmtStamp(v){
+  if(!v) return '-';
+  var d=new Date(v);
+  if(isNaN(d)) return String(v);
+  var p=function(n){return ('0'+n).slice(-2);};
+  return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+
+/** ส่งอีเมลเชิญ / ลิงก์ตั้งรหัสผ่านใหม่ */
+function resendInvite(empId){
+  var e=(window._emps||[]).filter(function(x){return x.empId===empId;})[0];
+  if(!e) return;
+  if(!e.email){ toast('พนักงานคนนี้ยังไม่มีอีเมล'); return; }
+
+  var acc=accountState(e);
+  openModal(
+    '<h2>'+acc.btnText+'</h2>'+
+    '<div class="msub">'+esc(e.name)+'</div>'+
+    '<div style="background:#fafbfc;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:6px">'+
+      '<div style="display:flex;gap:10px;align-items:center">'+
+        '<span style="color:var(--muted)">'+svgI('mail',{size:18})+'</span>'+
+        '<b>'+esc(e.email)+'</b></div>'+
+      '<div style="color:var(--muted);font-size:13px;margin-top:8px">'+esc(acc.tip)+'</div>'+
+    '</div>'+
+    '<div style="color:var(--muted);font-size:12.5px;line-height:1.7;margin-bottom:4px">'+
+      'พนักงานจะได้รับลิงก์สำหรับตั้งรหัสผ่าน ลิงก์ใช้ได้ครั้งเดียวและมีอายุจำกัด<br>'+
+      'หมายเหตุ: SMTP ในตัวของ Supabase จำกัดประมาณ 4 ฉบับ/ชั่วโมง</div>'+
+    '<div class="actions">'+
+      '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>'+
+      '<button class="btn btn-dark" id="inv_go" onclick="doResendInvite(\''+empId+'\')">ส่งอีเมล</button>'+
+    '</div>');
+}
+
+function doResendInvite(empId){
+  var btn=$('inv_go');
+  if(btn){ btn.disabled=true; btn.textContent='กำลังส่ง...'; }
+  run('inviteEmployee',empId).then(function(r){
+    closeModal();
+    if(r && r.redirectTo && /localhost|127\.0\.0\.1/.test(r.redirectTo)){
+      toast('ส่งแล้ว แต่ลิงก์ชี้ไป '+r.redirectTo+' — ตรวจ Site URL ใน Supabase');
+    } else {
+      toast(r && r.mode==='reset'
+        ? 'ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ '+r.email+' แล้ว'
+        : 'ส่งอีเมลเชิญไปที่ '+((r&&r.email)||'')+' แล้ว');
+    }
+    renderEmployees();
+  }).catch(function(e){
+    if(btn){ btn.disabled=false; btn.textContent='ส่งอีเมล'; }
+    toast('ส่งไม่สำเร็จ: '+e.message);
+  });
 }
 
 function empFilter(){
