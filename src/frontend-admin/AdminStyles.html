@@ -115,9 +115,34 @@ tr:last-child td{border-bottom:none}
 .hide{display:none!important}
 .spinner{width:60px;height:60px;border:4px solid var(--line);border-top-color:var(--blue);
   border-radius:50%;animation:spin .8s linear infinite;margin:40px auto}
-/* ตัวโหลดระดับหน้า — ลอยกลางจอพอดี ไม่ขึ้นกับความสูงของเนื้อหา */
-.spinner.page{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;z-index:50}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---- กล่องโหลดระดับหน้า ----
+ * ใช้ flex จัดกึ่งกลาง "ในพื้นที่เนื้อหา" ไม่ใช่กลางจอ
+ * (ถ้าใช้ position:fixed จะเยื้องไปทางซ้าย 115px เพราะ sidebar กว้าง 230px) */
+.loadbox{min-height:calc(100vh - 200px);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px}
+.loadbox .spinner{margin:0}
+.loadbox .loadtxt{color:var(--muted);font-size:14.5px;letter-spacing:.2px}
+/* กล่องโหลดย่อย (ในการ์ด/ตาราง) */
+.loadbox.sm{min-height:220px;gap:12px}
+.loadbox.sm .spinner{width:44px;height:44px;border-width:3px}
+
+/* ---- แถบ progress ด้านบนสุด ----
+ * ขึ้นทุกครั้งที่มีคำขอค้างอยู่ ทำให้รู้ว่าระบบกำลังทำงาน แม้ไม่ได้เปลี่ยนหน้า */
+#ttBar{position:fixed;top:0;left:0;height:3px;width:0;z-index:9999;
+  background:linear-gradient(90deg,var(--blue),#7aa2ff);
+  transition:width .25s ease,opacity .3s ease;opacity:0;pointer-events:none}
+html.tt-loading #ttBar{width:75%;opacity:1}
+html.tt-loading #ttBar.done{width:100%;opacity:0}
+
+/* ระหว่างโหลด: กันกดเมนูซ้ำ + บอกด้วยสายตา */
+.side.nav-busy .nav-item{pointer-events:none;opacity:.5}
+.side.nav-busy .nav-item.active{opacity:1}
+.nav-item.is-loading{position:relative}
+.nav-item.is-loading::after{content:'';position:absolute;right:12px;top:50%;
+  width:13px;height:13px;margin-top:-7px;border:2px solid var(--blue-soft);
+  border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 /* Report (รายงานประจำเดือน) */
 .rep-wrap{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:10px}
 .rep{border-collapse:collapse;font-size:11px;white-space:nowrap}

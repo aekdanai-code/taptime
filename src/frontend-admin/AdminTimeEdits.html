@@ -8,6 +8,7 @@ function renderTimeEdits(){
 }
 
 function loadTimeEdits(){
+  $('content').innerHTML=loadBox('กำลังโหลดคำขอแก้เวลา...');
   run('listTimeEdits',window._teFilter).then(function(list){
     var rows=list.map(function(t,i){
       var chg=[];

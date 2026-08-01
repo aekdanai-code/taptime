@@ -10,6 +10,8 @@ function renderAttendance(){
 
 function loadAtt(){
   var date=window._attDate,branch=window._attBranch||'';
+  // เปลี่ยนวันที่/สาขา ก็ต้องเห็นว่ากำลังโหลด ไม่ใช่ค้างตารางเดิมไว้เฉย ๆ
+  $('content').innerHTML=loadBox('กำลังโหลดข้อมูลการลงเวลา...');
   run('listAttendance',date,branch).then(function(list){
     run('listEmployees').then(function(emps){
       window._attEmps=emps;

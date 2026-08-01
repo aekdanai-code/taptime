@@ -29,7 +29,7 @@ function dleg(color,label){return '<span style="display:inline-flex;align-items:
   esc(label)+'</span>';}
 
 function loadDaily(){
-  var res=$('dayResult'); res.innerHTML='<div class="spinner"></div>';
+  var res=$('dayResult'); res.innerHTML=loadBox('กำลังสร้างรายงานรายวัน...',true);
   window._dayDate=$('day_date').value;
   var params={date:$('day_date').value, name:$('day_name').value.trim()};
   run('dailyReport',params).then(drawDaily)

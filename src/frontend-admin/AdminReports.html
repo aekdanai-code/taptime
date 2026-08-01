@@ -45,7 +45,7 @@ function reportParams(){
 }
 
 function loadReport(){
-  var res=$('repResult'); res.innerHTML='<div class="spinner"></div>';
+  var res=$('repResult'); res.innerHTML=loadBox('กำลังสร้างรายงานประจำเดือน...',true);
   run('monthlyReport',reportParams()).then(function(r){ drawReport(r); })
     .catch(function(e){ res.innerHTML='<div class="empty">ผิดพลาด: '+esc(e.message||e)+'</div>'; });
 }

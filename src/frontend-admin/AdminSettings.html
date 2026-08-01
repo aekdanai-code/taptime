@@ -203,7 +203,7 @@ var ASSIGN={typeId:'',name:'',base:0,assignAll:true,sel:{},q:''};
 
 function openAssign(typeId){
   var lt=(BOOT.leaveTypes||[]).filter(function(x){return x.typeId===typeId;})[0]||{};
-  openModal('<h2>กำหนดสิทธิ์ '+esc(lt.name)+'</h2><div class="msub">กำลังโหลด...</div><div class="spinner"></div>', true);
+  openModal('<h2>กำหนดสิทธิ์ '+esc(lt.name)+'</h2>'+loadBox('กำลังโหลดรายชื่อพนักงาน...',true), true);
 
   Promise.all([run('listLeaveAssignments',typeId), run('listEmployees')])
     .then(function(r){

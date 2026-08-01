@@ -225,6 +225,22 @@
     } catch (e) { /* ไม่ต้องทำอะไร */ }
   }
 
+  /* ==========================================================================
+   * ตัวนับคำขอที่ยังค้างอยู่
+   * ใช้บอกสถานะ "กำลังโหลด" ให้ทั้งหน้ารู้ (แถบ progress ด้านบน + กันกดเมนูซ้ำ)
+   * ======================================================================== */
+  var pending = 0;
+  function bump(delta) {
+    pending = Math.max(0, pending + delta);
+    try {
+      document.documentElement.classList.toggle('tt-loading', pending > 0);
+    } catch (e) {}
+    if (pending === 0 && typeof window.__ttIdle === 'function') {
+      try { window.__ttIdle(); } catch (e) {}
+    }
+  }
+  window.ttPending = function () { return pending; };
+
   /* ----------------------------------------------------------- transport */
   function post(fnName, args, extra) {
     var payload = { fn: fnName, args: args };
@@ -255,6 +271,7 @@
   function call(fnName, args, onSuccess, onFailure) {
     var chain;
     var btn = isReadOnly(fnName) ? null : lockBtn(fnName);
+    bump(1);
 
     if (BIOMETRIC_FNS[fnName] && WA && WA.required) {
       if (!supportsWebAuthn()) {
@@ -285,14 +302,14 @@
 
     chain
       .then(function (data) {
-        unlockBtn(btn);
+        unlockBtn(btn); bump(-1);
         if (data === null && !onSuccess) return;
         if (window.__ttAfterRpc) { try { window.__ttAfterRpc(fnName, data); } catch (e) {} }
         /* backend เดิมคืนเป็น JSON string — จำลองพฤติกรรมเดิมให้เป๊ะ */
         if (onSuccess) onSuccess(data === null ? null : JSON.stringify(data));
       })
       .catch(function (e) {
-        unlockBtn(btn);
+        unlockBtn(btn); bump(-1);
         if (onFailure) onFailure(e instanceof Error ? e : new Error(String(e)));
         else console.error(e);
       });

@@ -793,6 +793,64 @@ async function t(name, fn) {
     );
   });
 
+  console.log('\n── สิทธิ์แอดมิน (ตรวจสดจากฐานข้อมูล) ───────');
+
+  const auth = require(path.join(LIB, 'auth'));
+
+  await t('เลื่อนเป็นแอดมินแล้วมีผลทันที ไม่ต้อง login ใหม่', async () => {
+    const emp = fake._data.profiles.find((e) => e.empId === 'EMP-f3795df3');
+    const before = emp.role;
+
+    emp.role = 'employee';
+    assert.strictEqual(await auth.isAdminNow({ empId: emp.empId }), false);
+
+    emp.role = 'admin';               // แอดมินเพิ่งเลื่อนสิทธิ์ให้ (cookie ยังเป็น employee)
+    assert.strictEqual(await auth.isAdminNow({ empId: emp.empId }), true,
+      'ต้องเป็นแอดมินทันทีโดยไม่ต้องออกจากระบบ');
+
+    emp.role = before;
+  });
+
+  await t('ถอดสิทธิ์แล้วถูกตัดทันที (ไม่ต้องรอ cookie หมดอายุ)', async () => {
+    const emp = fake._data.profiles.find((e) => e.empId === 'EMP-admin1');
+    assert.strictEqual(await auth.isAdminNow({ empId: emp.empId }), true);
+    emp.role = 'employee';
+    assert.strictEqual(await auth.isAdminNow({ empId: emp.empId }), false);
+    emp.role = 'admin';
+  });
+
+  await t('แอดมินที่ถูกระงับ (inactive) ใช้สิทธิ์ไม่ได้', async () => {
+    const emp = fake._data.profiles.find((e) => e.empId === 'EMP-admin1');
+    emp.status = 'inactive';
+    assert.strictEqual(await auth.isAdminNow({ empId: emp.empId }), false);
+    const v = await auth.currentViewer({ empId: emp.empId });
+    assert.strictEqual(v.active, false);
+    assert.strictEqual(v.role, 'admin', 'role ยังเป็น admin แต่ใช้ไม่ได้');
+    emp.status = 'active';
+  });
+
+  await t('ไม่มี session / พนักงานถูกลบ -> ไม่ใช่แอดมิน', async () => {
+    assert.strictEqual(await auth.isAdminNow(null), false);
+    assert.strictEqual(await auth.isAdminNow({ empId: 'EMP-ไม่มีจริง' }), false);
+    assert.strictEqual(await auth.currentViewer({ empId: 'EMP-ไม่มีจริง' }), null);
+  });
+
+  await t('appUrl(): ตัด path ที่ใส่เกินมาออก (เคยตั้งเป็น .../admin)', () => {
+    const invite = require(path.join(LIB, 'api/invite'));
+    assert.strictEqual(
+      invite.toOrigin('https://taptime-three.vercel.app/admin'),
+      'https://taptime-three.vercel.app'
+    );
+    assert.strictEqual(
+      invite.toOrigin('https://taptime-three.vercel.app/'),
+      'https://taptime-three.vercel.app'
+    );
+    assert.strictEqual(
+      invite.toOrigin('http://localhost:3000'),
+      'http://localhost:3000'
+    );
+  });
+
   console.log('\n── การเชื่อมต่อ frontend <-> backend ────────');
 
   const fs = require('fs');
@@ -1100,32 +1158,32 @@ async function t(name, fn) {
     assert.ok(h.includes('วันหยุดประจำสัปดาห์'), 'คำอธิบายสีหายไป');
   });
 
-  await t('ตัวโหลดขนาด 60x60 และลอยกลางจอ (ทั้ง admin และ employee)', () => {
+  await t('ตัวโหลดขนาด 60x60 มีอนิเมชัน (ทั้ง admin และ employee)', () => {
     for (const page of ['admin.html', 'employee.html']) {
       const h = fs.readFileSync(path.join(GEN, page), 'utf8');
       const m = h.match(/\.spinner\{width:(\d+)px;height:(\d+)px/);
       assert.ok(m, page + ': ไม่พบ .spinner');
       assert.strictEqual(m[1], '60', page + ': กว้างต้องเป็น 60px');
       assert.strictEqual(m[2], '60', page + ': สูงต้องเป็น 60px');
-
-      const p = h.match(/\.spinner\.page\{([^}]+)\}/);
-      assert.ok(p, page + ': ไม่พบ .spinner.page');
-      ['position:fixed', 'left:50%', 'top:50%', 'translate(-50%,-50%)']
-        .forEach((k) => assert.ok(p[1].includes(k), page + ': .spinner.page ขาด ' + k));
       assert.ok(h.includes('animation:spin'), page + ': ไม่มีอนิเมชัน');
     }
   });
 
-  await t('ตอนเปิดแอปใช้ตัวโหลดแบบกลางจอ', () => {
+  await t('ตอนเปิดแอปขึ้นตัวโหลดกึ่งกลาง (คนละวิธีตามโครงหน้า)', () => {
+    // หน้าพนักงาน: เต็มความกว้าง ใช้ fixed กลางจอได้เลย
     const emp = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
     assert.ok(emp.includes('<div class="wrap" id="app"><div class="spinner page"></div></div>'),
       'หน้าพนักงานยังใช้ spinner แบบเดิม');
+    assert.ok(/\.spinner\.page\{[^}]*position:fixed/.test(emp),
+      'หน้าพนักงาน: .spinner.page ต้องเป็น fixed');
 
+    // หน้าแอดมิน: มี sidebar 230px จึงต้องจัดกึ่งกลางใน "พื้นที่เนื้อหา" แทน
     const adm = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
-    assert.ok(adm.includes('<div class="content" id="content"><div class="spinner page"></div></div>'),
-      'หน้าแอดมินยังใช้ spinner แบบเดิม');
-    assert.ok(adm.includes('function loading(){$(\'content\').innerHTML=\'<div class="spinner page">'),
-      'loading() ยังไม่ได้ใช้แบบกลางจอ');
+    assert.ok(adm.includes("function loading(msg){"), 'loading() ต้องรับข้อความได้');
+    assert.ok(adm.includes("$('content').innerHTML=loadBox(msg)"),
+      'loading() ต้องใช้ loadBox');
+    assert.ok(adm.includes("loading('กำลังเตรียมข้อมูลระบบ...')"),
+      'ตอนเปิดหน้าแอดมินต้องขึ้นข้อความ');
   });
 
   await t('รูปโปรไฟล์ฝั่งพนักงานเป็น 60x60', () => {
@@ -1137,6 +1195,66 @@ async function t(name, fn) {
     // ยังต้องเป็นวงกลมและครอปพอดีกรอบ
     assert.ok(/\.avatar\{[^}]*border-radius:50%/.test(h), 'ต้องเป็นวงกลม');
     assert.ok(h.includes('img.avatar{object-fit:cover}'), 'รูปต้องไม่ยืด');
+  });
+
+  await t('Admin: กล่องโหลดจัดกึ่งกลางในพื้นที่เนื้อหา (ไม่เยื้องเพราะ sidebar)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    // ต้องไม่ใช้ position:fixed เพราะ sidebar กว้าง 230px จะทำให้เยื้องไป 115px
+    assert.ok(!/\.spinner\.page\{[^}]*position:fixed/.test(h),
+      'ยังใช้ .spinner.page แบบ fixed อยู่');
+    const m = h.match(/\.loadbox\{([^}]+)\}/);
+    assert.ok(m, 'ไม่พบ .loadbox');
+    ['display:flex', 'align-items:center', 'justify-content:center']
+      .forEach((k) => assert.ok(m[1].includes(k), '.loadbox ขาด ' + k));
+    assert.ok(h.includes('function loadBox('), 'ไม่มี helper loadBox');
+  });
+
+  await t('Admin: ทุกเมนูขึ้นข้อความ "กำลังโหลด" ตอนดึงข้อมูล', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    const expect = [
+      'กำลังเตรียมข้อมูลระบบ...',        // ตอนเปิดหน้า
+      'กำลังโหลดรายชื่อพนักงาน...',      // จัดการพนักงาน
+      'กำลังโหลดข้อมูลการลงเวลา...',     // เช็คชื่อ เข้า-ออก
+      'กำลังโหลดรายการลา...',            // ลา - ขาดงาน
+      'กำลังโหลดคำขอแก้เวลา...',         // คำขอแก้เวลา
+      'กำลังสร้างรายงานรายวัน...',
+      'กำลังสร้างรายงานประจำเดือน...',
+    ];
+    expect.forEach((k) => assert.ok(h.includes(k), 'ขาดข้อความ: ' + k));
+    // ค่าเริ่มต้นเมื่อไม่ระบุข้อความ
+    assert.ok(h.includes("'กำลังโหลดข้อมูล...'"), 'ขาดข้อความเริ่มต้น');
+  });
+
+  await t('Admin: เปลี่ยนตัวกรองแล้วต้องขึ้นโหลด (ไม่ค้างตารางเดิม)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    // ฟังก์ชันที่ถูกเรียกซ้ำเมื่อเปลี่ยนวันที่/สถานะ ต้องเคลียร์หน้าเป็นกล่องโหลดก่อน
+    ['function loadAtt(', 'function loadLeaves(', 'function loadTimeEdits(']
+      .forEach((fnStart) => {
+        const i = h.indexOf(fnStart);
+        assert.ok(i > 0, 'ไม่พบ ' + fnStart);
+        const body = h.slice(i, i + 400);
+        assert.ok(body.includes('loadBox('), fnStart + ' ไม่ได้แสดงกล่องโหลด');
+      });
+  });
+
+  await t('Admin: กันกดเมนูซ้ำระหว่างโหลด', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes('if(NAV_BUSY) return;'), 'switchTab ไม่ได้กันกดซ้ำ');
+    assert.ok(h.includes('function navBusy('), 'ไม่มี navBusy');
+    assert.ok(h.includes('window.__ttIdle'), 'ไม่ได้ผูกกับตัวนับคำขอของ shim');
+    assert.ok(h.includes('.side.nav-busy .nav-item{pointer-events:none'),
+      'CSS ไม่ได้ปิดการคลิกเมนู');
+    // ต้องมี watchdog กันค้างถาวร
+    assert.ok(/setTimeout\(function\(\)\{navBusy\(false\);\},12000\)/.test(h),
+      'ไม่มี watchdog ปลดล็อกเมนู');
+  });
+
+  await t('Admin: มีแถบ progress ด้านบนตอนมีคำขอค้าง', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes("bar.id='ttBar'"), 'ไม่ได้สร้างแถบ progress');
+    assert.ok(h.includes('html.tt-loading #ttBar'), 'ไม่มี CSS ของแถบ progress');
+    assert.ok(h.includes("classList.toggle('tt-loading'"), 'shim ไม่ได้ตั้งสถานะโหลด');
+    assert.ok(h.includes('window.ttPending'), 'ไม่มีตัวนับคำขอค้าง');
   });
 
   await t('generated/login.html มีช่อง "จดจำฉันไว้"', () => {

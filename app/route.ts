@@ -6,6 +6,7 @@
  **********************************************************************/
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { currentViewer } from '@/lib/auth';
 import { isHandheld, landingFor } from '@/lib/device';
 
 export const runtime = 'nodejs';
@@ -15,8 +16,11 @@ export async function GET(req: NextRequest) {
   const session = getSession();
   if (!session) return NextResponse.redirect(new URL('/login', req.url));
 
+  const viewer = await currentViewer(session);
+  if (!viewer) return NextResponse.redirect(new URL('/login', req.url));
+
   const handheld = isHandheld(req.headers.get('user-agent') || '');
   return NextResponse.redirect(
-    new URL(landingFor(session.role, handheld), req.url)
+    new URL(landingFor(viewer.role, handheld), req.url)
   );
 }

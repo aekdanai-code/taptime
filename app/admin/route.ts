@@ -8,14 +8,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readGenerated, htmlResponse } from '@/lib/page';
 import { getSession } from '@/lib/session';
+import { isAdminNow } from '@/lib/auth';
 import { isHandheld } from '@/lib/device';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  // ตรวจ role จากฐานข้อมูล ไม่ใช่จาก cookie
+  // -> เลื่อนเป็นแอดมินแล้วเข้าได้ทันที ไม่ต้อง logout/login ใหม่
+  //    และถอดสิทธิ์แล้วก็ถูกตัดทันทีเช่นกัน
   const session = getSession();
-  if (!session || session.role !== 'admin') {
+  if (!session || !(await isAdminNow(session))) {
     const url = new URL('/login', req.url);
     url.searchParams.set('next', '/admin');
     return NextResponse.redirect(url);

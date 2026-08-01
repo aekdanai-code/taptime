@@ -12,6 +12,7 @@ import { readGenerated, htmlResponse } from '@/lib/page';
 import { getSession } from '@/lib/session';
 import { T, findOne } from '@/lib/db';
 import { hasCredential } from '@/lib/webauthn';
+import { currentViewer } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       enrolled,
       name: emp.name,
     }))
-    .replace(/__TAPTIME_IS_ADMIN__/g, session.role === 'admin' ? 'true' : 'false');
+    .replace(/__TAPTIME_IS_ADMIN__/g, (await currentViewer(session))?.isAdmin ? 'true' : 'false');
 
   return htmlResponse(html);
 }

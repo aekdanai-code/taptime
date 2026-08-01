@@ -46,9 +46,23 @@ export function appUrl(): string {
   }
 
   const env = process.env.NEXT_PUBLIC_APP_URL;
-  if (env) return env.replace(/\/+$/, '');
+  if (env) return toOrigin(env);
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return 'http://localhost:3000';
+}
+
+/**
+ * ตัด path ออกให้เหลือแค่ origin
+ * กันกรณีตั้งค่าเป็น `https://xxx.vercel.app/admin` แล้วลิงก์ในอีเมล
+ * กลายเป็น `/admin/set-password` ซึ่งเป็นหน้า 404
+ */
+export function toOrigin(raw: string): string {
+  const s = String(raw || '').trim().replace(/\/+$/, '');
+  try {
+    return new URL(s).origin;
+  } catch {
+    return s;
+  }
 }
 
 /** ค้นหา auth user จากอีเมล (Supabase ยังไม่มี getUserByEmail ตรง ๆ) */

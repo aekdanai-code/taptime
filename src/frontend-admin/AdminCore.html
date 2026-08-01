@@ -14,7 +14,19 @@ function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');
   setTimeout(function(){t.classList.remove('show');},2200);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function loading(){$('content').innerHTML='<div class="spinner page"></div>';}
+/**
+ * กล่อง "กำลังโหลด" ระดับหน้า — จัดกึ่งกลางในพื้นที่เนื้อหา (ไม่ใช่กลางจอ)
+ * @param msg ข้อความใต้วงหมุน (ค่าเริ่มต้น "กำลังโหลดข้อมูล...")
+ */
+function loading(msg){
+  $('content').innerHTML=loadBox(msg);
+}
+/** HTML ของกล่องโหลด — เอาไปใส่ในกล่องย่อยก็ได้ (small=true) */
+function loadBox(msg,small){
+  return '<div class="loadbox'+(small?' sm':'')+'">'+
+    '<div class="spinner"></div>'+
+    '<div class="loadtxt">'+esc(msg||'กำลังโหลดข้อมูล...')+'</div></div>';
+}
 
 /* ---- modal ---- */
 function openModal(html,wide){var m=$('modal');m.className='modal'+(wide?' wide':'');
@@ -86,7 +98,10 @@ function paintIcons(root){ (root||document).querySelectorAll('[data-icon]').forE
 /* ---- init ---- */
 window.addEventListener('load',function(){
   paintIcons(document);
+  // แถบ progress บนสุด — แสดงทุกครั้งที่มีคำขอค้างอยู่
+  var bar=document.createElement('div'); bar.id='ttBar'; document.body.appendChild(bar);
   $('overlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
+  loading('กำลังเตรียมข้อมูลระบบ...');
   run('adminBootstrap').then(function(b){
     if(!b) throw new Error('เซิร์ฟเวอร์ส่งข้อมูลว่าง — ลอง Deploy ใหม่ (Manage deployments → Edit → Version: New)');
     BOOT=b;
@@ -100,14 +115,39 @@ window.addEventListener('load',function(){
   });
 });
 
-/* ---- router ---- */
+/* ---- router ----
+ * กันกดเมนูรัว ๆ ระหว่างที่ยังโหลดไม่เสร็จ
+ * ปลดล็อกเมื่อคำขอทั้งหมดเสร็จ (__ttIdle จาก shim) หรือครบ 12 วิ กันค้าง
+ */
+var NAV_BUSY=false, _navTimer=null;
+
+function navBusy(on,tab){
+  NAV_BUSY=on;
+  var side=document.querySelector('.side');
+  if(side) side.classList.toggle('nav-busy',on);
+  document.querySelectorAll('.nav-item').forEach(function(n){
+    n.classList.toggle('is-loading', on && n.dataset.tab===tab);});
+  clearTimeout(_navTimer);
+  if(on) _navTimer=setTimeout(function(){navBusy(false);},12000);
+}
+
+/* shim เรียกตัวนี้เมื่อคำขอค้างเหลือ 0 */
+window.__ttIdle=function(){ if(NAV_BUSY) navBusy(false); };
+
 function switchTab(tab){
+  if(NAV_BUSY) return;                 // กำลังโหลดอยู่ ไม่รับคลิกซ้ำ
+  var fn=({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
+    leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
+    holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily})[tab];
+  if(!fn) return;
+
   CURRENT_TAB=tab;
   document.querySelectorAll('.nav-item').forEach(function(n){
     n.classList.toggle('active',n.dataset.tab===tab);});
-  ({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
-    leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
-    holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily}[tab])();
+  navBusy(true,tab);
+  fn();
+  // เมนูที่ไม่ได้ยิง RPC (เช่น ตั้งค่า/วันหยุด ใช้ข้อมูลจาก BOOT) ปลดล็อกทันที
+  setTimeout(function(){ if(window.ttPending && window.ttPending()===0) navBusy(false); },80);
 }
 
 /* ============ เมนู: ภาพรวม ============ */

@@ -17,6 +17,7 @@ import {
   REGISTRY, ADMIN_FNS, EMPLOYEE_FNS, BIOMETRIC_FNS, applyIdentity,
 } from '@/lib/rpc';
 import { getSession } from '@/lib/session';
+import { isAdminNow } from '@/lib/auth';
 import { T, findOne } from '@/lib/db';
 import {
   verifyAuthentication, unpackChallenge, CHALLENGE_COOKIE,
@@ -50,9 +51,12 @@ export async function POST(req: NextRequest) {
 
     const session = getSession();
 
-    /* ---------- 1. ฟังก์ชันฝั่งแอดมิน ---------- */
+    /* ---------- 1. ฟังก์ชันฝั่งแอดมิน ----------
+     * ตรวจ role สดจากฐานข้อมูล ไม่ใช่จาก cookie
+     * (เลื่อน/ถอดสิทธิ์แล้วมีผลทันที ไม่ต้องรอ cookie หมดอายุ)
+     */
     if (ADMIN_FNS.has(fn)) {
-      if (!session || session.role !== 'admin') {
+      if (!session || !(await isAdminNow(session))) {
         return NextResponse.json(
           { error: 'ต้องเข้าสู่ระบบด้วยบัญชีผู้ดูแลระบบ', code: 'unauthorized' },
           { status: 401 }

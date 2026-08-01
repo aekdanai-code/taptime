@@ -8,7 +8,7 @@
 var EMP_STATE={q:'',branch:'',pos:'',status:'',role:'',page:1,per:20};
 
 function renderEmployees(){
-  loading();
+  loading('กำลังโหลดรายชื่อพนักงาน...');
   run('listEmployees').then(function(list){
     window._emps=list;
     EMP_STATE.page=1;
@@ -292,11 +292,16 @@ function editEmp(empId){
    /* ---------- 4. การเข้าใช้ระบบ ---------- */
    '<div class="fsec">การเข้าใช้ระบบ</div>'+
    '<div class="f-row">'+
-     fld('สิทธิ์การใช้งาน',true,'<select id="e_role">'+
-        opt2([['employee','พนักงาน'],['head','หัวหน้างาน'],['admin','แอดมิน']],e.role)+'</select>')+
+     '<div class="field"><label>สิทธิ์การใช้งาน <span class="req">*</span></label>'+
+       '<div class="hint">เลือก "แอดมิน" เพื่อให้เข้าหน้าจัดการระบบได้ — มีผลทันที ไม่ต้องออกจากระบบแล้วเข้าใหม่</div>'+
+       '<select id="e_role">'+
+        opt2([['employee','พนักงาน'],['head','หัวหน้างาน'],['admin','แอดมิน']],e.role)+'</select></div>'+
      fld('สถานะ',true,'<select id="e_status">'+
         opt2([['active','ทำงานอยู่'],['inactive','ลาออก / พ้นสภาพ']],e.status||'active')+'</select>')+
    '</div>'+
+   '<div class="cksub" style="margin:-8px 0 14px">'+
+     'แอดมินต้องมีอีเมลและตั้งรหัสผ่านแล้วจึงจะเข้าใช้งานได้ '+
+     '(ดูสถานะที่คอลัมน์ "บัญชีผู้ใช้" ในตาราง)</div>'+
 
    /* ---------- 5. การยืนยันตัวตนตอนลงเวลา ---------- */
    '<div class="fsec">การยืนยันตัวตนตอนลงเวลา</div>'+

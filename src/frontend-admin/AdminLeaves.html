@@ -8,6 +8,7 @@ function renderLeaves(){
 }
 
 function loadLeaves(){
+  $('content').innerHTML=loadBox('กำลังโหลดรายการลา...');
   run('listLeaves',window._leaveFilter).then(function(list){
     var rows=list.map(function(l,i){
       return '<tr><td>'+(i+1)+'</td>'+
