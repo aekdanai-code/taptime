@@ -154,29 +154,84 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
 .sb-total b{color:var(--green);font-size:21px}
 .sb-note{margin-top:8px;font-size:20px;font-weight:700}
 
-/* slide-to-action */
-.slider{position:relative;height:64px;border-radius:16px;overflow:hidden;
+/* ========= slide-to-action (จุดขายของแอป — ต้องเด่นที่สุดในหน้า) ========= */
+.slidewrap{margin:2px 0 6px}
+.slider{position:relative;height:78px;border-radius:999px;overflow:hidden;
   display:flex;align-items:center;justify-content:center;user-select:none;
-  touch-action:none;margin-bottom:6px}
-.slider.green{background:#d6f3e2}
-.slider.orange{background:#fdecd2}
-.slider.gray{background:#e9ebee}
-.slide-fill{position:absolute;left:0;top:0;bottom:0;width:64px;border-radius:16px;opacity:.5;
+  touch-action:none;-webkit-tap-highlight-color:transparent;
+  --p:0;                       /* ความคืบหน้าการลาก 0..1 (ตั้งค่าจาก JS) */
+  box-shadow:0 10px 24px -8px var(--sl-glow,rgba(0,0,0,.35)),
+             inset 0 2px 0 rgba(255,255,255,.28),
+             inset 0 -3px 8px rgba(0,0,0,.18)}
+.slider.green{--sl-a:#18c163;--sl-b:#0c8f47;--sl-ink:#0b7a3c;--sl-glow:rgba(18,161,80,.55);
+  background:linear-gradient(135deg,var(--sl-a),var(--sl-b))}
+.slider.orange{--sl-a:#ffa42b;--sl-b:#e0700a;--sl-ink:#b85f06;--sl-glow:rgba(232,130,12,.55);
+  background:linear-gradient(135deg,var(--sl-a),var(--sl-b))}
+.slider.gray{--sl-a:#dfe3e8;--sl-b:#ced4db;--sl-ink:#8a9099;--sl-glow:rgba(0,0,0,.12);
+  background:linear-gradient(135deg,var(--sl-a),var(--sl-b));
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.5),inset 0 -3px 8px rgba(0,0,0,.06)}
+
+/* รอยทางที่ลากผ่านแล้ว — สว่างขึ้นตามระยะ */
+.slide-fill{position:absolute;left:0;top:0;bottom:0;width:78px;border-radius:999px;
+  background:linear-gradient(90deg,rgba(255,255,255,.42),rgba(255,255,255,.14));
   transition:width .25s}
-.slider.green .slide-fill{background:var(--green)}
-.slider.orange .slide-fill{background:var(--orange)}
-.slide-text{position:relative;font-weight:800;font-size:20px;pointer-events:none}
-.slider.green .slide-text{color:var(--green2)}
-.slider.orange .slide-text{color:var(--orange)}
-.slider.gray .slide-text{color:var(--muted)}
-.slide-knob{position:absolute;left:5px;top:5px;width:54px;height:54px;border-radius:12px;
-  background:#fff;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:grab;transition:transform .25s}
-.slider.green .slide-knob{color:var(--green)}
-.slider.orange .slide-knob{color:var(--orange)}
-.slider.gray .slide-knob{color:var(--muted)}
-.slider.disabled{opacity:.7}
+.slider.gray .slide-fill{display:none}
+
+/* แสงกวาดผ่านตัวปุ่ม บอกทิศทางที่ต้องลาก */
+.slider:not(.disabled)::after{content:'';position:absolute;top:0;bottom:0;left:0;width:44%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.4),transparent);
+  transform:translateX(-120%);animation:slSheen 2.6s ease-in-out infinite;pointer-events:none}
+@keyframes slSheen{0%{transform:translateX(-120%)}60%,100%{transform:translateX(330%)}}
+
+.slide-text{position:relative;z-index:2;font-weight:800;font-size:21px;letter-spacing:.2px;
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.22);pointer-events:none;
+  padding-left:64px;padding-right:44px;
+  opacity:calc(1 - var(--p) * .85);transition:opacity .18s;
+  animation:slBlink 1.5s ease-in-out infinite}
+.slider.gray .slide-text{color:#fff;text-shadow:none;animation:none;padding-left:64px}
+@keyframes slBlink{0%,100%{opacity:1}50%{opacity:.55}}
+.slider.dragging .slide-text,.slider.armed .slide-text{animation:none}
+
+/* ลูกศรวิ่ง ››› ชี้ทางให้ผู้ใช้รู้ทันทีว่าต้องสไลด์ */
+.slide-arrows{position:absolute;z-index:2;right:20px;top:50%;transform:translateY(-50%);
+  display:flex;gap:3px;pointer-events:none;opacity:calc(1 - var(--p))}
+.slide-arrows i{display:block;width:9px;height:9px;border-right:3px solid #fff;
+  border-top:3px solid #fff;transform:rotate(45deg);border-radius:2px;opacity:.25;
+  animation:slChev 1.2s linear infinite}
+.slide-arrows i:nth-child(2){animation-delay:.16s}
+.slide-arrows i:nth-child(3){animation-delay:.32s}
+@keyframes slChev{0%,100%{opacity:.22}45%{opacity:1}}
+
+/* ลูกบิดกลม สีขาว เงาเข้ม — จับแล้วลากไปขวา */
+.slide-knob{position:absolute;z-index:3;left:6px;top:6px;width:66px;height:66px;border-radius:50%;
+  background:radial-gradient(120% 120% at 30% 25%,#fff,#eef1f5);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 6px 14px rgba(0,0,0,.28),0 1px 0 rgba(255,255,255,.9) inset;
+  cursor:grab;transition:transform .25s}
+.slider:not(.disabled) .slide-knob:active{cursor:grabbing}
+.slider.green .slide-knob{color:var(--sl-ink)}
+.slider.orange .slide-knob{color:var(--sl-ink)}
+.slider.gray .slide-knob{color:#a2a9b2;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+/* วงแหวนเต้นรอบลูกบิด (ใช้ pseudo-element เพราะ transform ของลูกบิดถูก JS คุมอยู่) */
+.slide-knob::before{content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.85);animation:slRing 1.5s ease-out infinite;pointer-events:none}
+@keyframes slRing{0%{transform:scale(1);opacity:.85}70%,100%{transform:scale(1.35);opacity:0}}
+.slider.gray .slide-knob::before,.slider.dragging .slide-knob::before,
+.slider.armed .slide-knob::before{display:none}
+
+.slider.disabled{opacity:.85}
 .slider.disabled .slide-knob{cursor:default}
+.slider.armed{animation:slPop .35s ease}
+@keyframes slPop{50%{transform:scale(1.02)}}
+
+/* ข้อความใบ้ใต้ปุ่ม */
+.slide-hint{text-align:center;font-size:15px;color:var(--muted);margin-top:8px;
+  animation:slBlink 1.5s ease-in-out infinite}
+
+@media (prefers-reduced-motion:reduce){
+  .slide-text,.slide-hint,.slide-arrows i,.slide-knob::before,.slider::after,.slider.armed{animation:none!important}
+  .slide-arrows i{opacity:.9}
+}
 
 /* leave balances */
 .balist{display:flex;flex-direction:column;gap:8px}

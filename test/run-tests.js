@@ -1145,6 +1145,45 @@ async function t(name, fn) {
     assert.ok(h.includes('แสดงจำนวนวันลา/ปี ในหน้าพนักงาน'), 'ขาด checkbox showQuota');
   });
 
+  console.log('\n── ปุ่มสไลด์เช็คอิน/เอาท์ ──────────────────');
+
+  await t('ปุ่มสไลด์: มีตัวช่วยดึงสายตา (ข้อความกระพริบ + ลูกศร + วงแหวน)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    ['slide-arrows', 'slide-hint', '@keyframes slBlink', '@keyframes slChev',
+     '@keyframes slRing', '@keyframes slSheen']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    assert.ok(/\.slide-text\{[^}]*animation:slBlink/.test(h), 'ข้อความบนปุ่มไม่กระพริบ');
+    assert.ok(/ลากปุ่มไปทางขวาจนสุด/.test(h), 'ไม่มีข้อความใบ้ใต้ปุ่ม');
+  });
+
+  await t('ปุ่มสไลด์: ทรงแคปซูลสีเข้ม ตัวหนังสือขาว (ตาม reference)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(/\.slider\{[^}]*border-radius:999px/.test(h), 'ยังไม่เป็นทรงแคปซูล');
+    assert.ok(/\.slide-knob\{[^}]*border-radius:50%/.test(h), 'ลูกบิดยังไม่กลม');
+    assert.ok(/\.slider\.green\{[^}]*linear-gradient/.test(h), 'พื้นเขียวยังไม่เป็น gradient เข้ม');
+    assert.ok(/\.slide-text\{[^}]*color:#fff/.test(h), 'ตัวหนังสือควรเป็นสีขาว');
+    assert.ok(!/\.slider\.green\{background:#d6f3e2\}/.test(h), 'ยังเหลือสีจางแบบเดิม');
+  });
+
+  await t('ปุ่มสไลด์: JS ยังใช้ hook เดิมครบ และเพิ่ม --p / dragging', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    ["id=\"slideCtl\"", 'data-action=', 'slide-fill', 'slide-text', 'slide-knob',
+     "classList.add('armed')", "classList.add('dragging')", "setProperty('--p'"]
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด hook ' + k));
+    // ต้องกดที่ไหนบนแถบก็ลากได้ ไม่ใช่เฉพาะบนลูกบิด
+    assert.ok(/el\.addEventListener\('touchstart',down/.test(h), 'ยังผูก drag ไว้กับลูกบิดอย่างเดียว');
+    // transform ของลูกบิดถูก JS คุม ห้าม animate ทับ
+    assert.ok(!/\.slide-knob\{[^}]*animation:/.test(h), 'ห้าม animate .slide-knob โดยตรง');
+    assert.ok(h.includes('.slide-knob::before'), 'วงแหวนต้องอยู่บน pseudo-element');
+  });
+
+  await t('ปุ่มสไลด์: เคารพ prefers-reduced-motion และปิดอนิเมชันตอนลาก', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes('prefers-reduced-motion'), 'ไม่รองรับ prefers-reduced-motion');
+    assert.ok(/\.slider\.dragging \.slide-text/.test(h), 'ตอนลากยังกระพริบอยู่');
+    assert.ok(/\.slider\.gray \.slide-text\{[^}]*animation:none/.test(h), 'ปุ่มที่กดไม่ได้ไม่ควรกระพริบ');
+  });
+
   await t('หน้าพนักงาน: ซ่อนโควตาของประเภทที่ตั้งค่าไม่ให้แสดง', () => {
     const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
     assert.ok(h.includes('x.showQuota!==false'), 'ไม่ได้กรองตาม showQuota');

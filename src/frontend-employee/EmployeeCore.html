@@ -220,16 +220,22 @@ function fmtDur(a){
   if(M===60){H++;M=0;}
   return H+' ชม. '+M+' นาที';
 }
-function slideCtl(action,color,label,icon){
-  return '<div class="slider '+color+'" id="slideCtl" data-action="'+action+'">'+
-    '<div class="slide-fill"></div>'+
-    '<div class="slide-text">'+esc(label)+'</div>'+
-    '<div class="slide-knob">'+svgI(icon,{size:22})+'</div></div>';
+function slideCtl(action,color,label,icon,hint){
+  return '<div class="slidewrap">'+
+    '<div class="slider '+color+'" id="slideCtl" data-action="'+action+'">'+
+      '<div class="slide-fill"></div>'+
+      '<div class="slide-text">'+esc(label)+'</div>'+
+      '<div class="slide-arrows"><i></i><i></i><i></i></div>'+
+      '<div class="slide-knob">'+svgI(icon,{size:26})+'</div>'+
+    '</div>'+
+    '<div class="slide-hint">'+esc(hint||'ลากปุ่มไปทางขวาจนสุด')+'</div></div>';
 }
 function slideDisabled(label){
-  return '<div class="slider gray disabled">'+
-    '<div class="slide-text">'+esc(label)+'</div>'+
-    '<div class="slide-knob">'+svgI('check',{size:22})+'</div></div>';
+  return '<div class="slidewrap">'+
+    '<div class="slider gray disabled">'+
+      '<div class="slide-text">'+esc(label)+'</div>'+
+      '<div class="slide-knob">'+svgI('check',{size:26})+'</div>'+
+    '</div></div>';
 }
 function kv(k,v){return '<div class="sb-cell"><div class="sb-k">'+k+'</div><div class="sb-v">'+esc(v||'-')+'</div></div>';}
 
@@ -250,7 +256,7 @@ function stateArea(a){
       '<div class="sb-cap" id="workCap">ระยะเวลาทำงาน (นับจากเวลาเข้างาน)</div>'+
       '<div class="sb-in">เวลาเข้างาน <b>'+esc(a.checkInTime)+'</b>'+
         (a.status==='late'?' <span class="late-tag">มาสาย</span>':'')+'</div>'+
-    '</div>'+slideCtl('out','orange','เลื่อนเพื่อออกงาน','logout');
+    '</div>'+slideCtl('out','orange','เลื่อนเพื่อออกงาน','logout','ลากปุ่มไปทางขวาจนสุดเพื่อออกงาน');
 
   // วันหยุด → สไลด์เทา กันเช็คอิน
   if(CTX.todayHoliday)
@@ -260,7 +266,7 @@ function stateArea(a){
     '</div>'+slideDisabled('วันหยุด — เช็คอินไม่ได้');
 
   // วันทำงานปกติ ยังไม่เช็คอิน → สไลด์เข้างาน (เขียว) เปิดตั้งแต่ 00:00
-  return slideCtl('in','green','เลื่อนเพื่อเข้างาน','login');
+  return slideCtl('in','green','เลื่อนเพื่อเข้างาน','login','ลากปุ่มไปทางขวาจนสุดเพื่อเข้างาน');
 }
 
 /* ---- แถบสไลด์: ลากปุ่มจนสุดจึงทำงาน ---- */
@@ -273,21 +279,25 @@ function bindSlider(a){
 function initSlider(el,onComplete){
   var knob=el.querySelector('.slide-knob'), fill=el.querySelector('.slide-fill');
   var dragging=false, startX=0, cur=0, done=false;
-  function maxX(){ return el.clientWidth - knob.offsetWidth - 10; }
+  function maxX(){ return Math.max(1, el.clientWidth - knob.offsetWidth - 12); }
   function setX(x){ cur=Math.max(0,Math.min(maxX(),x));
     knob.style.transform='translateX('+cur+'px)';
-    if(fill)fill.style.width=(cur+knob.offsetWidth+5)+'px'; }
+    if(fill)fill.style.width=(cur+knob.offsetWidth+6)+'px';
+    // --p ใช้หรี่ข้อความ/ลูกศรตามระยะที่ลากไป (ดูเป็นการตอบสนองทันที)
+    el.style.setProperty('--p',(cur/maxX()).toFixed(3)); }
   function pt(e){ return e.touches&&e.touches[0]?e.touches[0].clientX:e.clientX; }
-  function down(e){ if(BUSY||done)return; dragging=true;
+  function buzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(_){} }
+  function down(e){ if(BUSY||done)return; dragging=true; el.classList.add('dragging');
     knob.style.transition='none'; if(fill)fill.style.transition='none';
     startX=pt(e)-cur; e.preventDefault(); }
   function move(e){ if(!dragging)return; setX(pt(e)-startX); e.preventDefault(); }
-  function up(){ if(!dragging)return; dragging=false;
+  function up(){ if(!dragging)return; dragging=false; el.classList.remove('dragging');
     knob.style.transition=''; if(fill)fill.style.transition='';
-    if(cur>=maxX()*0.9){ done=true; setX(maxX()); el.classList.add('armed'); onComplete(); }
+    if(cur>=maxX()*0.9){ done=true; setX(maxX()); el.classList.add('armed'); buzz(35); onComplete(); }
     else setX(0); }
-  knob.addEventListener('mousedown',down);
-  knob.addEventListener('touchstart',down,{passive:false});
+  // กดที่ไหนก็ได้บนแถบแล้วลากได้ ไม่ต้องจิ้มให้ตรงลูกบิด
+  el.addEventListener('mousedown',down);
+  el.addEventListener('touchstart',down,{passive:false});
   document.addEventListener('mousemove',move);
   document.addEventListener('touchmove',move,{passive:false});
   document.addEventListener('mouseup',up);
