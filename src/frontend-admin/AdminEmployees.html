@@ -1,11 +1,15 @@
 <script>
 /* ============ เมนู: จัดการพนักงาน ============
- * - ค้นหา + กรอง (สาขา / ตำแหน่ง / สถานะ / สิทธิ์)
+ * ตารางแสดงเฉพาะข้อมูลที่จำเป็น: ชื่อ / สาขา / สถานะ / บัญชีผู้ใช้
+ *   (อีเมล เบอร์โทร ตำแหน่ง ถูกซ่อน แต่ยังค้นหาเจอ และแก้ได้ในฟอร์ม)
+ * - ค้นหา + กรอง (สาขา / สถานะ / สิทธิ์)
  * - แบ่งหน้า 10 / 20 / 50 / 100 (เริ่มต้น 20)
+ * - ปุ่มจัดการเป็นไอคอน มี tooltip บอกหน้าที่
+ * - มีป้ายรูปโล่หลังชื่อบอกว่าใครเป็นแอดมิน / หัวหน้างาน
  * - รูปพนักงานถูกครอปกึ่งกลางเป็นจัตุรัส 150x150 ก่อนบันทึก
  * ============================================ */
 
-var EMP_STATE={q:'',branch:'',pos:'',status:'',role:'',page:1,per:20};
+var EMP_STATE={q:'',branch:'',status:'',role:'',page:1,per:20};
 
 function renderEmployees(){
   loading('กำลังโหลดรายชื่อพนักงาน...');
@@ -21,7 +25,6 @@ function empFiltered(){
   var s=EMP_STATE, q=s.q.trim().toLowerCase();
   return (window._emps||[]).filter(function(e){
     if(s.branch && e.branchId!==s.branch) return false;
-    if(s.pos    && e.position!==s.pos)    return false;
     if(s.role   && (e.role||'employee')!==s.role) return false;
     if(s.status){
       var st=String(e.status||'active').toLowerCase();
@@ -42,40 +45,44 @@ function drawEmpPage(){
 
   var rows=rowsData.map(function(e,i){
     var av=e.photo
-      ? '<img src="'+e.photo+'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px">'
-      : '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#e7eaee;color:#556;vertical-align:middle;margin-right:8px">'+svgI('user',{size:19})+'</span>';
+      ? '<img src="'+e.photo+'" style="width:34px;height:34px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:9px">'
+      : '<span style="display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#e7eaee;color:#556;vertical-align:middle;margin-right:9px">'+svgI('user',{size:19})+'</span>';
     var inactive=String(e.status||'active').toLowerCase()==='inactive';
     var nick=e.nickname?' <span style="color:var(--muted);font-weight:400">('+esc(e.nickname)+')</span>':'';
     var acc=accountState(e);
+    var role=e.role||'employee';
+    // ป้ายบอกสิทธิ์ — เห็นได้ทันทีว่าใครเป็นแอดมิน
+    var roleBadge = role==='admin'
+      ? '<span class="badge-admin" title="ผู้ดูแลระบบ — เข้าหน้าจัดการได้">'+svgI('shield',{size:12,sw:2})+'</span>'
+      : (role==='head'
+        ? '<span class="badge-admin badge-head" title="หัวหน้างาน">'+svgI('shield',{size:12,sw:2})+'</span>'
+        : '');
+
     return '<tr'+(inactive?' style="opacity:.55"':'')+'>'+
       '<td>'+(from+i+1)+'</td>'+
-      '<td>'+av+'<b>'+esc(e.name)+'</b>'+nick+
-        '<br><span style="color:var(--muted);font-size:12px;margin-left:42px">'+esc(e.phone||'')+'</span></td>'+
+      '<td>'+av+'<b>'+esc(e.name)+'</b>'+nick+roleBadge+'</td>'+
       '<td>'+esc(e.branchName||'')+'</td>'+
-      '<td>'+esc(e.position||'')+
-        (e.salaryType?'<div style="color:var(--muted);font-size:11.5px;margin-top:2px">'+esc(e.salaryType)+'</div>':'')+'</td>'+
       '<td>'+(inactive
         ? '<span class="tag t-gray">ลาออก</span>'
         : '<span class="tag t-green">ทำงานอยู่</span>')+'</td>'+
       '<td><span class="tag '+acc.cls+'" title="'+esc(acc.tip)+'">'+acc.label+'</span>'+
         (e.webauthnExempt
           ? ' <span class="tag t-orange" title="ยกเว้นการยืนยันตัวตนด้วยอุปกรณ์ตอนลงเวลา">ยกเว้น passkey</span>'
-          : '')+
-        (e.email?'<div style="color:var(--muted);font-size:11.5px;margin-top:3px">'+esc(e.email)+'</div>':'')+'</td>'+
+          : '')+'</td>'+
       '<td class="act">'+
         (e.email
-          ? '<span class="btn btn-sm btn-green" title="'+esc(acc.btnTip)+'" onclick="resendInvite(\''+e.empId+'\')">'+
-              svgI('mail',{size:15})+' '+acc.btnText+'</span> '
+          ? '<span class="btn-ico ico-green" title="'+esc(acc.btnTip)+'" onclick="resendInvite(\''+e.empId+'\')">'+
+              svgI('mail',{size:16})+'</span>'
           : '')+
-        '<span class="btn btn-sm btn-ghost" onclick="editEmp(\''+e.empId+'\')">แก้ไข</span> '+
-        '<span class="btn btn-sm btn-red" onclick="delEmp(\''+e.empId+'\')">ลบ</span>'+
+        '<span class="btn-ico" title="แก้ไขข้อมูลพนักงาน" onclick="editEmp(\''+e.empId+'\')">'+
+          svgI('edit',{size:16})+'</span>'+
+        '<span class="btn-ico ico-red" title="ลบพนักงาน" onclick="delEmp(\''+e.empId+'\')">'+
+          svgI('trash',{size:16})+'</span>'+
       '</td></tr>';
   }).join('');
 
   var branchOpts='<option value="">ทุกสาขา</option>'+(BOOT.branches||[]).map(function(b){
     return '<option value="'+b.branchId+'"'+(EMP_STATE.branch===b.branchId?' selected':'')+'>'+esc(b.name)+'</option>';}).join('');
-  var posOpts='<option value="">ทุกตำแหน่ง</option>'+(BOOT.positions||[]).map(function(p){
-    return '<option'+(EMP_STATE.pos===p.name?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');
   var statusOpts=[['','ทุกสถานะ'],['active','ทำงานอยู่'],['inactive','ลาออก']].map(function(o){
     return '<option value="'+o[0]+'"'+(EMP_STATE.status===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('');
   var roleOpts=[['','ทุกสิทธิ์'],['employee','พนักงาน'],['head','หัวหน้างาน'],['admin','แอดมิน']].map(function(o){
@@ -94,18 +101,17 @@ function drawEmpPage(){
 
       /* ---- แถบค้นหา + กรอง ---- */
       '<div class="filterbar">'+
-        '<input id="emp_q" class="fb-search" placeholder="ค้นหาชื่อ ชื่อเล่น เบอร์โทร อีเมล..." value="'+esc(EMP_STATE.q)+'">'+
+        '<input id="emp_q" class="fb-search" placeholder="ค้นหาชื่อ ชื่อเล่น เบอร์โทร อีเมล ตำแหน่ง..." title="ค้นหาได้แม้ข้อมูลนั้นจะไม่ได้แสดงในตาราง" value="'+esc(EMP_STATE.q)+'">'+
         '<select id="emp_branch" onchange="empFilter()">'+branchOpts+'</select>'+
-        '<select id="emp_pos" onchange="empFilter()">'+posOpts+'</select>'+
         '<select id="emp_status" onchange="empFilter()">'+statusOpts+'</select>'+
         '<select id="emp_role" onchange="empFilter()">'+roleOpts+'</select>'+
-        (EMP_STATE.q||EMP_STATE.branch||EMP_STATE.pos||EMP_STATE.status||EMP_STATE.role
+        (EMP_STATE.q||EMP_STATE.branch||EMP_STATE.status||EMP_STATE.role
           ? '<span class="btn btn-sm btn-ghost" onclick="empClearFilter()">ล้างตัวกรอง</span>':'')+
       '</div>'+
 
-      '<table><thead><tr><th>ลำดับ</th><th>ชื่อ</th><th>สาขา</th><th>ตำแหน่ง</th>'+
-      '<th>สถานะ</th><th>บัญชีผู้ใช้</th><th>จัดการ</th></tr></thead><tbody>'+
-      (rows||'<tr><td colspan="7" class="empty">'+
+      '<table><thead><tr><th>ลำดับ</th><th>ชื่อ</th><th>สาขา</th>'+
+      '<th>สถานะ</th><th>บัญชีผู้ใช้</th><th style="text-align:right">จัดการ</th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan="6" class="empty">'+
         ((window._emps||[]).length?'ไม่พบพนักงานที่ตรงเงื่อนไข':'ยังไม่มีพนักงาน — กดปุ่มเพิ่มเพื่อสร้างรายการใหม่')+
         '</td></tr>')+
       '</tbody></table>'+
@@ -216,13 +222,12 @@ function doResendInvite(empId){
 
 function empFilter(){
   EMP_STATE.branch=$('emp_branch').value;
-  EMP_STATE.pos=$('emp_pos').value;
   EMP_STATE.status=$('emp_status').value;
   EMP_STATE.role=$('emp_role').value;
   EMP_STATE.page=1; drawEmpPage();
 }
 function empClearFilter(){
-  EMP_STATE={q:'',branch:'',pos:'',status:'',role:'',page:1,per:EMP_STATE.per};
+  EMP_STATE={q:'',branch:'',status:'',role:'',page:1,per:EMP_STATE.per};
   drawEmpPage();
 }
 function empPer(v){ EMP_STATE.per=Number(v)||20; EMP_STATE.page=1; drawEmpPage(); }

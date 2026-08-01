@@ -942,14 +942,92 @@ async function t(name, fn) {
       .forEach((k) => assert.ok(!h.includes(k), 'ยังเหลือ ' + k));
   });
 
-  await t('หน้าจัดการพนักงาน: มีค้นหา / ตัวกรอง 4 แบบ / แบ่งหน้า', () => {
+  await t('หน้าจัดการพนักงาน: มีค้นหา / ตัวกรอง 3 แบบ / แบ่งหน้า', () => {
     const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
-    ['emp_q', 'emp_branch', 'emp_pos', 'emp_status', 'emp_role',
+    ['emp_q', 'emp_branch', 'emp_status', 'emp_role',
      'empFilter(', 'empClearFilter(', 'empPer(', 'empPage(']
       .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
     // ตัวเลือกจำนวนรายการต่อหน้า
     assert.ok(/\[10,\s*20,\s*50,\s*100\]/.test(h), 'ตัวเลือกต่อหน้าไม่ครบ 10/20/50/100');
     assert.ok(/per\s*:\s*20/.test(h), 'ค่าเริ่มต้นต้องเป็น 20 รายการ');
+  });
+
+  await t('ตารางพนักงาน: ซ่อนอีเมล เบอร์โทร และตำแหน่ง', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    const i = h.indexOf('var rows=rowsData.map(');
+    const j = h.indexOf('var branchOpts=');
+    assert.ok(i > 0 && j > i, 'ไม่พบส่วนสร้างแถวตาราง');
+    const rowCode = h.slice(i, j);
+
+    assert.ok(!/e\.phone/.test(rowCode), 'ยังแสดงเบอร์โทรในตาราง');
+    assert.ok(!/e\.email\?/.test(rowCode), 'ยังแสดงอีเมลในตาราง');
+    assert.ok(!/e\.position/.test(rowCode), 'ยังแสดงตำแหน่งในตาราง');
+    assert.ok(!/e\.salaryType/.test(rowCode), 'ยังแสดงประเภทเงินเดือนในตาราง');
+
+    // หัวตาราง "ของหน้าจัดการพนักงาน" ต้องไม่มีคอลัมน์ตำแหน่ง
+    // (หน้ารายงานรายวันยังมีคอลัมน์ตำแหน่งอยู่ ซึ่งถูกต้องแล้ว จึงต้องเจาะเฉพาะจุด)
+    const thead = h.match(
+      /'<table><thead><tr><th>ลำดับ<\/th><th>ชื่อ<\/th>[^;]*?<\/tr><\/thead><tbody>'/
+    );
+    assert.ok(thead, 'ไม่พบหัวตารางของหน้าจัดการพนักงาน');
+    assert.ok(!thead[0].includes('ตำแหน่ง'), 'ยังมีคอลัมน์ตำแหน่งในตารางพนักงาน');
+    // ระวัง: /<th/ จะไปตรงกับ <thead> ด้วย ต้องบังคับให้ตามด้วย > หรือช่องว่าง
+    const cols = (thead[0].match(/<th[ >]/g) || []).length;
+    assert.strictEqual(cols, 6, 'ควรเหลือ 6 คอลัมน์ แต่ได้ ' + cols);
+    assert.ok(h.includes('colspan="6"'), 'colspan ของแถวว่างไม่ตรงกับจำนวนคอลัมน์');
+
+    // ตัวกรองตำแหน่งต้องถูกถอดออก
+    assert.ok(!h.includes('emp_pos'), 'ยังมีตัวกรองตำแหน่ง');
+    assert.ok(!h.includes('ทุกตำแหน่ง'), 'ยังมีตัวเลือก "ทุกตำแหน่ง"');
+
+    // แต่ยังต้องค้นหาด้วยอีเมล/เบอร์/ตำแหน่งได้อยู่
+    assert.ok(/\[e\.name,e\.nickname,e\.phone,e\.email,e\.position/.test(h),
+      'ต้องยังค้นหาจากข้อมูลที่ซ่อนได้');
+    // และแก้ไขได้ในฟอร์ม
+    ['e_phone', 'e_email', 'e_pos'].forEach((k) =>
+      assert.ok(h.includes(k), 'ฟอร์มต้องยังมีช่อง ' + k));
+  });
+
+  await t('ตารางพนักงาน: ปุ่มจัดการเป็นไอคอน + มี tooltip', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    const i = h.indexOf('var rows=rowsData.map(');
+    const rowCode = h.slice(i, h.indexOf('var branchOpts='));
+
+    // ต้องไม่เหลือปุ่มแบบข้อความ
+    ['>แก้ไข<', '>ลบ<'].forEach((k) =>
+      assert.ok(!rowCode.includes(k), 'ยังมีปุ่มข้อความ ' + k));
+
+    assert.ok(rowCode.includes('btn-ico'), 'ไม่ได้ใช้ปุ่มไอคอน');
+    // ทุกปุ่มต้องมี title (tooltip)
+    ['title="แก้ไขข้อมูลพนักงาน"', 'title="ลบพนักงาน"']
+      .forEach((k) => assert.ok(rowCode.includes(k), 'ขาด tooltip: ' + k));
+    assert.ok(/title="'\+esc\(acc\.btnTip\)\+'"/.test(rowCode),
+      'ปุ่มส่งอีเมลไม่มี tooltip');
+    // ไอคอนครบ 3 แบบ
+    ["svgI('mail'", "svgI('edit'", "svgI('trash'"]
+      .forEach((k) => assert.ok(rowCode.includes(k), 'ขาดไอคอน ' + k));
+    assert.ok(h.includes('.btn-ico{'), 'ไม่มี CSS ของปุ่มไอคอน');
+  });
+
+  await t('ตารางพนักงาน: มีไอคอนบอกว่าใครเป็นแอดมิน', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes("role==='admin'"), 'ไม่ได้ตรวจ role admin');
+    assert.ok(h.includes('badge-admin'), 'ไม่มีป้ายแอดมิน');
+    assert.ok(h.includes('title="ผู้ดูแลระบบ'), 'ป้ายแอดมินไม่มี tooltip');
+    assert.ok(h.includes("shield:'<path"), 'ขาดไอคอนโล่');
+    assert.ok(h.includes('.badge-admin{'), 'ไม่มี CSS ของป้าย');
+    // หัวหน้างานก็ควรแยกสีได้
+    assert.ok(h.includes('badge-head'), 'ไม่มีป้ายหัวหน้างาน');
+  });
+
+  await t('ปุ่มไอคอนถูกล็อกตอนกด แต่ไอคอนไม่ถูกแทนด้วยข้อความ', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes("'.btn-ico'") || h.includes('.btn-ico,'),
+      'BTN_SEL ไม่ครอบคลุมปุ่มไอคอน');
+    assert.ok(h.includes("contains('btn-ico')"), 'ไม่ได้แยกกรณีปุ่มไอคอน');
+    assert.ok(h.includes('if (!iconOnly) el.innerHTML = busyText(fn)'),
+      'ปุ่มไอคอนจะถูกแทนด้วยข้อความ ทำให้ไอคอนหาย');
+    assert.ok(h.includes('.btn-ico[data-busy]'), 'ไม่มี CSS ตอนปุ่มไอคอนถูกล็อก');
   });
 
   await t('หน้าจัดการพนักงาน: ครอปรูปกึ่งกลางเป็น 150x150', () => {

@@ -161,7 +161,7 @@
    * พร้อมเปลี่ยนข้อความเป็น "กำลังบันทึก..." จนกว่าจะได้คำตอบ
    * -> ไม่ต้องแก้ handler ทีละตัวในทุกไฟล์
    * ======================================================================== */
-  var BTN_SEL = 'button, .btn, .btn-dark, .btn-out, .btn-ghost, .btn-red, .btn-green';
+  var BTN_SEL = 'button, .btn, .btn-ico, .btn-dark, .btn-out, .btn-ghost, .btn-red, .btn-green';
   var lastBtn = null, lastBtnAt = 0;
 
   document.addEventListener('click', function (e) {
@@ -192,8 +192,12 @@
     lastBtn = null;
     if (el.dataset && el.dataset.ttBusy) return null;   // ล็อกอยู่แล้ว
 
+    // ปุ่มไอคอนไม่มีข้อความให้เปลี่ยน — แค่หรี่ลงและปิดคลิกก็พอ
+    var iconOnly = el.classList && el.classList.contains('btn-ico');
+
     var state = {
       el: el,
+      iconOnly: iconOnly,
       html: el.innerHTML,
       disabled: el.disabled,
       pe: el.style.pointerEvents,
@@ -201,10 +205,10 @@
     };
     try {
       el.dataset.ttBusy = '1';
-      el.innerHTML = busyText(fn);
+      if (!iconOnly) el.innerHTML = busyText(fn);
       if ('disabled' in el) el.disabled = true;         // <button>
       el.style.pointerEvents = 'none';                  // <span class="btn">
-      el.style.opacity = '.6';
+      el.style.opacity = '.5';
       el.setAttribute('aria-busy', 'true');
     } catch (e) { return null; }
     return state;
@@ -217,7 +221,7 @@
       delete el.dataset.ttBusy;
       // ปุ่มอาจถูกถอดออกไปแล้ว (เช่น modal ปิดหลังบันทึกสำเร็จ) — ไม่เป็นไร
       if (!document.body.contains(el)) return;
-      el.innerHTML = state.html;
+      if (!state.iconOnly) el.innerHTML = state.html;
       if ('disabled' in el) el.disabled = state.disabled;
       el.style.pointerEvents = state.pe;
       el.style.opacity = state.op;

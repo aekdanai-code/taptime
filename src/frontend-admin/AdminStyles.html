@@ -182,9 +182,22 @@ html.tt-loading #ttBar.done{width:100%;opacity:0}
 .pager .pg-now{font-weight:700}
 .btn.disabled{opacity:.4;pointer-events:none}
 
-/* ---- คอลัมน์ปุ่มจัดการในตาราง ---- */
-td.act{white-space:nowrap}
-td.act .btn{margin-bottom:3px}
+/* ---- คอลัมน์ปุ่มจัดการในตาราง (ปุ่มไอคอน) ---- */
+td.act{white-space:nowrap;text-align:right}
+.btn-ico{display:inline-grid;place-items:center;width:32px;height:32px;margin-left:4px;
+  border:1px solid var(--line);border-radius:9px;background:#fff;color:#6b7280;
+  cursor:pointer;transition:.13s;vertical-align:middle}
+.btn-ico:hover{background:#f6f7f9;color:var(--ink);border-color:#d7dbe0}
+.btn-ico:active{transform:scale(.93)}
+.btn-ico.ico-green:hover{color:var(--green);border-color:#bfe6cf;background:var(--green-soft)}
+.btn-ico.ico-red:hover{color:var(--red);border-color:#f3c9c6;background:var(--red-soft)}
+.btn-ico[data-busy]{opacity:.5;pointer-events:none}
+
+/* ---- ป้ายแอดมินหลังชื่อ ---- */
+.badge-admin{display:inline-grid;place-items:center;width:19px;height:19px;
+  border-radius:50%;background:var(--blue-soft);color:var(--blue);
+  vertical-align:-4px;margin-left:5px}
+.badge-head{background:var(--orange-soft);color:var(--orange)}
 
 /* ---- หัวข้อย่อยในฟอร์ม ---- */
 .fsec{font-weight:800;font-size:13px;color:var(--muted);letter-spacing:.3px;
