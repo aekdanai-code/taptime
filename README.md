@@ -1,7 +1,9 @@
-# TapTime V2 — Web App (Next.js + Supabase)
+# TapTime V1.2 — Web App (Next.js + Supabase)
 
 ระบบลงเวลาเข้า-ออกงานด้วย GPS — แปลงมาจาก **Google Apps Script + Google Sheets** (V1.1)
 มาเป็นเว็บแอปจริงที่รันบน **Next.js + Supabase (PostgreSQL) + Vercel**
+
+**เวอร์ชันปัจจุบัน: 1.2.0** — สรุปทุกอย่างที่เปลี่ยนอยู่ใน [CHANGELOG.md](CHANGELOG.md)
 
 > **ตอนย้ายระบบ UI ถูกยกมาทั้งดุ้นโดยไม่แก้แม้แต่บรรทัดเดียว**
 > ต่อมาจึงมีการปรับหน้าจอตามที่ร้องขอเพิ่มเติม (ดูข้อ 4.7)
@@ -587,7 +589,7 @@ npm test
 cd taptime-web          # หรือ cd .. ถ้าอยากเก็บทั้งโปรเจกต์รวม Apps Script เดิม
 git init
 git add .
-git commit -m "TapTime V2 — Next.js + Supabase"
+git commit -m "TapTime V1.2 — Next.js + Supabase"
 git branch -M main
 git remote add origin https://github.com/<user>/taptime.git
 git push -u origin main

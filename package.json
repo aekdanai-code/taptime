@@ -1,6 +1,6 @@
 {
   "name": "taptime-web",
-  "version": "2.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "TapTime — ระบบลงเวลาทำงาน (Next.js + Supabase)",
   "scripts": {
