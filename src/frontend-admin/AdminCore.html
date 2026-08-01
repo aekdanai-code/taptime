@@ -14,7 +14,7 @@ function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');
   setTimeout(function(){t.classList.remove('show');},2200);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function loading(){$('content').innerHTML='<div class="spinner"></div>';}
+function loading(){$('content').innerHTML='<div class="spinner page"></div>';}
 
 /* ---- modal ---- */
 function openModal(html,wide){var m=$('modal');m.className='modal'+(wide?' wide':'');

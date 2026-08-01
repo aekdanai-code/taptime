@@ -1100,6 +1100,45 @@ async function t(name, fn) {
     assert.ok(h.includes('วันหยุดประจำสัปดาห์'), 'คำอธิบายสีหายไป');
   });
 
+  await t('ตัวโหลดขนาด 60x60 และลอยกลางจอ (ทั้ง admin และ employee)', () => {
+    for (const page of ['admin.html', 'employee.html']) {
+      const h = fs.readFileSync(path.join(GEN, page), 'utf8');
+      const m = h.match(/\.spinner\{width:(\d+)px;height:(\d+)px/);
+      assert.ok(m, page + ': ไม่พบ .spinner');
+      assert.strictEqual(m[1], '60', page + ': กว้างต้องเป็น 60px');
+      assert.strictEqual(m[2], '60', page + ': สูงต้องเป็น 60px');
+
+      const p = h.match(/\.spinner\.page\{([^}]+)\}/);
+      assert.ok(p, page + ': ไม่พบ .spinner.page');
+      ['position:fixed', 'left:50%', 'top:50%', 'translate(-50%,-50%)']
+        .forEach((k) => assert.ok(p[1].includes(k), page + ': .spinner.page ขาด ' + k));
+      assert.ok(h.includes('animation:spin'), page + ': ไม่มีอนิเมชัน');
+    }
+  });
+
+  await t('ตอนเปิดแอปใช้ตัวโหลดแบบกลางจอ', () => {
+    const emp = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(emp.includes('<div class="wrap" id="app"><div class="spinner page"></div></div>'),
+      'หน้าพนักงานยังใช้ spinner แบบเดิม');
+
+    const adm = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(adm.includes('<div class="content" id="content"><div class="spinner page"></div></div>'),
+      'หน้าแอดมินยังใช้ spinner แบบเดิม');
+    assert.ok(adm.includes('function loading(){$(\'content\').innerHTML=\'<div class="spinner page">'),
+      'loading() ยังไม่ได้ใช้แบบกลางจอ');
+  });
+
+  await t('รูปโปรไฟล์ฝั่งพนักงานเป็น 60x60', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    const m = h.match(/\.avatar\{width:(\d+)px;height:(\d+)px/);
+    assert.ok(m, 'ไม่พบ .avatar');
+    assert.strictEqual(m[1], '60', 'กว้างต้องเป็น 60px');
+    assert.strictEqual(m[2], '60', 'สูงต้องเป็น 60px');
+    // ยังต้องเป็นวงกลมและครอปพอดีกรอบ
+    assert.ok(/\.avatar\{[^}]*border-radius:50%/.test(h), 'ต้องเป็นวงกลม');
+    assert.ok(h.includes('img.avatar{object-fit:cover}'), 'รูปต้องไม่ยืด');
+  });
+
   await t('generated/login.html มีช่อง "จดจำฉันไว้"', () => {
     const h = fs.readFileSync(path.join(GEN, 'login.html'), 'utf8');
     assert.ok(h.includes('id="remember"'), 'ไม่พบ checkbox remember');
