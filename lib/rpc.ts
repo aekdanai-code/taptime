@@ -16,7 +16,7 @@ import {
   listAttendance, manualCheckIn, manualCheckOut, editCheckOut,
 } from './api/attendance';
 import {
-  employeeContext, empCheckIn, empCheckOut, empSubmitLeave,
+  employeeContext, empCheckIn, empCheckOut, empSubmitLeave, empUpdatePhoto,
 } from './api/employeeApi';
 import { listLeaves, decideLeave } from './api/leaves';
 import { empSubmitTimeEdit, listTimeEdits, decideTimeEdit } from './api/timeEdits';
@@ -61,7 +61,7 @@ export const ADMIN_FNS = new Set([
  */
 export const EMPLOYEE_FNS = new Set([
   'employeeContext', 'empCheckIn', 'empCheckOut',
-  'empSubmitLeave', 'empSubmitTimeEdit',
+  'empSubmitLeave', 'empSubmitTimeEdit', 'empUpdatePhoto',
   // แจ้งเตือน — ใช้ได้ทั้งแอดมินและพนักงาน ตัวตนมาจาก session เสมอ
   'listNotifications', 'unreadCount', 'markNotificationsRead',
 ]);
@@ -102,7 +102,7 @@ export const REGISTRY: Record<string, Fn> = {
   /* Attendance */
   listAttendance, manualCheckIn, manualCheckOut, editCheckOut,
   /* Employee API */
-  employeeContext, empCheckIn, empCheckOut, empSubmitLeave,
+  employeeContext, empCheckIn, empCheckOut, empSubmitLeave, empUpdatePhoto,
   /* Leaves */
   listLeaves, decideLeave,
   /* Time edits */

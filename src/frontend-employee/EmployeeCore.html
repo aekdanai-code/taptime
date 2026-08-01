@@ -65,7 +65,8 @@ var ICONS={
   x:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.7v.02"/>',
   edit:'<path d="M4 20.5h4.5L19 10l-4.5-4.5L4 16v4.5Z"/><path d="M12.5 6.5 17 11"/>',
-  user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>'
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+  camera:'<path d="M3 8.5h3.2L8 6h8l1.8 2.5H21v11H3z"/><circle cx="12" cy="14" r="3.4"/>'
 };
 function svgI(name,opt){opt=opt||{};var s=opt.size||20;
   return '<svg viewBox="0 0 24 24" width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" '+
@@ -155,9 +156,14 @@ function switchPage(p){
 /* ============ หน้าหลัก ============ */
 function renderHome(){
   var a=CTX.attendance,s=CTX.stats;
-  var av=CTX.emp.photo
-    ? '<img class="avatar" src="'+CTX.emp.photo+'" style="object-fit:cover">'
-    : '<div class="avatar" style="color:#556">'+svgI('user',{size:24})+'</div>';
+  var inner=CTX.emp.photo
+    ? '<img class="avatar" id="myAvatar" src="'+CTX.emp.photo+'" style="object-fit:cover">'
+    : '<div class="avatar" id="myAvatar" style="color:#556">'+svgI('user',{size:24})+'</div>';
+  // แตะรูปเพื่อเปลี่ยนรูปโปรไฟล์ของตัวเอง
+  var av='<div class="avwrap" onclick="pickMyPhoto()" title="แตะเพื่อเปลี่ยนรูป">'+inner+
+    '<span class="avcam">'+svgI('camera',{size:13})+'</span>'+
+    '<input type="file" accept="image/*" id="myPhotoInput" style="display:none" '+
+      'onchange="onMyPhoto(this)"></div>';
   $('app').innerHTML=
     '<div class="hd">'+av+'<div>'+
       '<div class="hi">สวัสดี</div><div class="nm">'+esc(CTX.emp.name)+'</div>'+
@@ -193,7 +199,6 @@ function renderHome(){
         '<span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fdeaea;vertical-align:-1px"></i> วันหยุดราชการ</span>'+
         '<span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#eef0f2;vertical-align:-1px"></i> วันหยุดประจำสัปดาห์</span>'+
       '</div></div>'+
-      '<div class="sec"><h4>วันหยุดที่จะถึง</h4><div id="empHolList"></div></div>'+
     '</div>';
   bindSlider(a);
   tick();
@@ -326,6 +331,61 @@ function handleFail(r,kind){
   else if(r.reason==='already_out'){ showAlert('เช็คเอาท์ซ้ำ','คุณได้เช็คเอาท์ไปแล้ววันนี้','info', loadCtx); }
   else if(r.reason==='no_checkin'){ showAlert('ยังไม่ได้เช็คอิน','กรุณาเช็คอินก่อนเช็คเอาท์','info', loadCtx); }
   else { showAlert('ไม่สำเร็จ','กรุณาลองใหม่อีกครั้ง','error', renderHome); }
+}
+
+/* ============ รูปโปรไฟล์ของฉัน ============
+ * ครอปกึ่งกลางเป็นจัตุรัสแล้วย่อเป็น 150x150 ก่อนส่ง
+ * (หลักการเดียวกับตอนแอดมินอัปโหลดให้ในหน้าจัดการพนักงาน)
+ * ========================================== */
+function pickMyPhoto(){
+  if(BUSY)return;
+  var el=$('myPhotoInput');
+  if(el) el.click();
+}
+
+function onMyPhoto(input){
+  var file=input.files[0];
+  input.value='';                       // เลือกไฟล์เดิมซ้ำได้
+  if(!file)return;
+  if(!/^image\//.test(file.type)){ toast('กรุณาเลือกไฟล์รูปภาพ'); return; }
+
+  var reader=new FileReader();
+  reader.onerror=function(){ toast('อ่านไฟล์ไม่สำเร็จ'); };
+  reader.onload=function(ev){
+    var img=new Image();
+    img.onerror=function(){ toast('ไฟล์รูปเสียหาย กรุณาเลือกรูปอื่น'); };
+    img.onload=function(){
+      var SIZE=150;
+      var side=Math.min(img.width,img.height);            // ด้านสั้นสุด = ขนาดจัตุรัส
+      var sx=(img.width-side)/2, sy=(img.height-side)/2;  // ครอปกึ่งกลาง
+      var c=document.createElement('canvas'); c.width=SIZE; c.height=SIZE;
+      var ctx=c.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,SIZE,SIZE);  // กันพื้นโปร่งใสของ PNG
+      ctx.drawImage(img,sx,sy,side,side,0,0,SIZE,SIZE);
+      saveMyPhoto(c.toDataURL('image/jpeg',0.85));
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveMyPhoto(dataUrl){
+  if(BUSY)return;
+  BUSY=true;
+  var wrap=document.querySelector('.avwrap');
+  if(wrap) wrap.classList.add('busy');
+  toast('กำลังอัปโหลดรูป...');
+
+  run('empUpdatePhoto',TOKEN,dataUrl).then(function(){
+    BUSY=false;
+    CTX.emp.photo=dataUrl;
+    renderHome();                       // วาดใหม่ให้เห็นรูปใหม่ทันที
+    toast('เปลี่ยนรูปโปรไฟล์แล้ว');
+  }).catch(function(e){
+    BUSY=false;
+    if(wrap) wrap.classList.remove('busy');
+    showAlert('อัปโหลดไม่สำเร็จ', e.message||e, 'error');
+  });
 }
 
 /* ============ ประวัติ ============ */

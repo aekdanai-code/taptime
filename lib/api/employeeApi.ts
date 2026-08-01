@@ -6,7 +6,7 @@
  * argument นั้นด้วย empId จาก session เสมอ — ค่าที่ client ส่งมาไม่มีผล
  * จึงปลอมเป็นคนอื่นไม่ได้แม้จะแก้ JavaScript ในหน้าเว็บ
  **********************************************************************/
-import { T, readObjects, findOne, appendObject } from '../db';
+import { T, readObjects, findOne, appendObject, updateByKey } from '../db';
 import {
   uid, today, nowHHMM, nowStamp, thisMonth, thisYear,
   distanceMeters, normalizeAtt, normalizeLeave, normalizeTimeEdit,
@@ -341,6 +341,42 @@ export async function empCheckOut(empId: string, lat: any, lng: any, ctx?: Check
   await audit(emp.empId, 'checkout', 'ok', lat, lng, geo.distance, ctx);
 
   return { ok: true, record };
+}
+
+/**
+ * พนักงานอัปเดตรูปโปรไฟล์ของตัวเอง
+ *
+ * รูปถูกครอป/ย่อเป็น 150x150 มาแล้วจากฝั่งเบราว์เซอร์ (เหมือนที่แอดมินทำ)
+ * ฝั่งเซิร์ฟเวอร์ตรวจซ้ำอีกชั้น เพราะ client ปลอมค่าได้เสมอ
+ *   - ต้องเป็น data URL ของรูปภาพ (jpeg/png/webp)
+ *   - ขนาดไม่เกิน 200 KB (รูป 150x150 JPEG q0.85 ปกติ ~8-15 KB)
+ */
+export async function empUpdatePhoto(empId: string, dataUrl: string) {
+  const emp = await empByIdentity(empId);
+  if (!emp) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+
+  const s = String(dataUrl || '');
+
+  // ส่งค่าว่างมา = ลบรูปออก
+  if (!s) {
+    await updateByKey(T.PROFILES, 'empId', emp.empId, { photo: null });
+    return { ok: true, removed: true };
+  }
+
+  const m = s.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) throw new Error('ไฟล์รูปไม่ถูกต้อง กรุณาเลือกรูปภาพใหม่');
+
+  // ความยาว base64 -> ขนาดไบต์จริงโดยประมาณ
+  const bytes = Math.floor((m[2].length * 3) / 4);
+  const MAX = 200 * 1024;
+  if (bytes > MAX) {
+    throw new Error(
+      `ไฟล์รูปใหญ่เกินไป (${Math.round(bytes / 1024)} KB) — จำกัดไม่เกิน 200 KB`
+    );
+  }
+
+  await updateByKey(T.PROFILES, 'empId', emp.empId, { photo: s });
+  return { ok: true, photo: s, bytes };
 }
 
 /** พนักงานยื่นลา (ตรวจเงื่อนไขลาล่วงหน้า) */

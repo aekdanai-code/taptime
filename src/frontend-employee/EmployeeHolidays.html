@@ -1,5 +1,7 @@
 <script>
-/* ============ ปฏิทินวันหยุด (ฝั่งพนักงาน, อ่านอย่างเดียว) ============ */
+/* ============ ปฏิทินวันหยุด (ฝั่งพนักงาน, อ่านอย่างเดียว) ============
+ * แสดงเฉพาะปฏิทิน — กล่อง "วันหยุดที่จะถึง" ถูกเอาออกแล้ว
+ * ================================================================= */
 
 var _empCalYM=null;
 
@@ -34,14 +36,6 @@ function drawEmpCalendar(){
   }
   grid+='</div>';
   $('empCal').innerHTML=bar+grid;
-
-  // วันหยุดราชการที่จะถึง
-  var up=(CTX.holidays||[]).filter(function(h){return h.date>=todayS;})
-    .sort(function(a,b){return String(a.date).localeCompare(String(b.date));}).slice(0,6);
-  $('empHolList').innerHTML=up.length?up.map(function(h){
-    return '<div class="row"><div class="ic" style="background:var(--red-soft);color:var(--red)">'+svgI('flag',{size:18})+'</div>'+
-      '<div class="grow"><div class="t">'+esc(h.name)+'</div><div class="s">'+esc(fmtDate(h.date))+'</div></div></div>';
-  }).join(''):'<div class="empty">ไม่มีวันหยุดราชการที่จะถึง</div>';
 }
 
 function empCalMove(delta){

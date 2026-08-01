@@ -731,6 +731,68 @@ async function t(name, fn) {
     );
   });
 
+  console.log('\n── พนักงานเปลี่ยนรูปโปรไฟล์เอง ─────────────');
+
+  const PNG_1PX =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  await t('อัปเดตรูปของตัวเองได้', async () => {
+    const r = await employeeApi.empUpdatePhoto('EMP-f3795df3', PNG_1PX);
+    assert.strictEqual(r.ok, true);
+    const row = fake._data.profiles.find((e) => e.empId === 'EMP-f3795df3');
+    assert.strictEqual(row.photo, PNG_1PX);
+  });
+
+  await t('ส่งค่าว่าง = ลบรูปออก', async () => {
+    const r = await employeeApi.empUpdatePhoto('EMP-f3795df3', '');
+    assert.strictEqual(r.removed, true);
+    const row = fake._data.profiles.find((e) => e.empId === 'EMP-f3795df3');
+    assert.strictEqual(row.photo, null);
+  });
+
+  await t('ปฏิเสธค่าที่ไม่ใช่รูปภาพ (กันยัด payload แปลกปลอม)', async () => {
+    for (const bad of [
+      'javascript:alert(1)',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      'https://example.com/a.jpg',
+      'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',   // svg รัน script ได้
+      'not-a-data-url',
+    ]) {
+      await assert.rejects(
+        () => employeeApi.empUpdatePhoto('EMP-f3795df3', bad),
+        /ไฟล์รูปไม่ถูกต้อง/,
+        'ควรปฏิเสธ: ' + bad.slice(0, 30)
+      );
+    }
+  });
+
+  await t('ปฏิเสธไฟล์ใหญ่เกิน 200 KB', async () => {
+    const big = 'data:image/jpeg;base64,' + 'A'.repeat(300 * 1024);
+    await assert.rejects(
+      () => employeeApi.empUpdatePhoto('EMP-f3795df3', big),
+      /ใหญ่เกินไป/
+    );
+  });
+
+  await t('พนักงานที่ถูกระงับเปลี่ยนรูปไม่ได้', async () => {
+    const me = fake._data.profiles.find((e) => e.empId === 'EMP-f3795df3');
+    const before = me.status;
+    me.status = 'inactive';
+    await assert.rejects(() => employeeApi.empUpdatePhoto('EMP-f3795df3', PNG_1PX));
+    me.status = before;
+  });
+
+  await t('empUpdatePhoto ถูกเขียนทับตัวตนจาก session (แก้รูปคนอื่นไม่ได้)', () => {
+    const rpc2 = require(path.join(LIB, 'rpc'));
+    assert.ok(rpc2.REGISTRY.empUpdatePhoto, 'ไม่มีใน REGISTRY');
+    assert.ok(rpc2.EMPLOYEE_FNS.has('empUpdatePhoto'), 'ต้องอยู่ใน EMPLOYEE_FNS');
+    assert.ok(!rpc2.ADMIN_FNS.has('empUpdatePhoto'));
+    assert.strictEqual(
+      rpc2.applyIdentity('empUpdatePhoto', ['EMP-เหยื่อ', PNG_1PX], { empId: 'EMP-ฉัน' })[0],
+      'EMP-ฉัน'
+    );
+  });
+
   console.log('\n── การเชื่อมต่อ frontend <-> backend ────────');
 
   const fs = require('fs');
@@ -1011,6 +1073,31 @@ async function t(name, fn) {
     const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
     assert.ok(h.includes('b_breakafter'), 'ขาดช่องกรอก');
     assert.ok(h.includes('breakAfterHours:'), 'ไม่ได้ส่งค่าไปบันทึก');
+  });
+
+  await t('หน้าพนักงาน: แตะรูปโปรไฟล์เพื่อเปลี่ยนรูปได้', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    ['pickMyPhoto(', 'onMyPhoto(', 'saveMyPhoto(', 'myPhotoInput', 'avwrap']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    assert.ok(h.includes("run('empUpdatePhoto'"), 'ไม่ได้เรียก empUpdatePhoto');
+  });
+
+  await t('หน้าพนักงาน: ย่อรูปเป็น 150x150 ครอปกึ่งกลาง (เหมือนฝั่งแอดมิน)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(/var SIZE=150/.test(h), 'ไม่ได้กำหนดขนาด 150');
+    assert.ok(h.includes('Math.min(img.width,img.height)'), 'ไม่ได้ครอปเป็นจัตุรัส');
+    assert.ok(h.includes('(img.width-side)/2'), 'ไม่ได้ครอปกึ่งกลาง');
+    assert.ok(h.includes("toDataURL('image/jpeg',0.85)"), 'คุณภาพ/ชนิดไฟล์ไม่ตรงกับฝั่งแอดมิน');
+  });
+
+  await t('เมนูวันหยุดฝั่งพนักงาน: เหลือแค่ปฏิทิน', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes('id="empCal"'), 'ต้องยังมีปฏิทิน');
+    // ตรวจ "หัวข้อที่แสดงผลจริง" ไม่ใช่ข้อความในคอมเมนต์
+    assert.ok(!/<h4>วันหยุดที่จะถึง<\/h4>/.test(h), 'ยังมีหัวข้อ "วันหยุดที่จะถึง"');
+    assert.ok(!h.includes('empHolList'), 'ยังมีกล่องรายการวันหยุดค้างอยู่');
+    // คำอธิบายสีต้องยังอยู่
+    assert.ok(h.includes('วันหยุดประจำสัปดาห์'), 'คำอธิบายสีหายไป');
   });
 
   await t('generated/login.html มีช่อง "จดจำฉันไว้"', () => {
