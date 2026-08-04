@@ -17,6 +17,8 @@
 -- ลบของเดิม (รันซ้ำได้)
 -- ---------------------------------------------------------------------------
 drop table if exists notifications       cascade;
+drop table if exists ot_requests         cascade;
+drop table if exists ot_policies         cascade;
 drop table if exists leave_assignments   cascade;
 drop table if exists checkin_audit        cascade;
 drop table if exists webauthn_credentials cascade;
@@ -32,8 +34,8 @@ drop table if exists config            cascade;
 
 -- ---------------------------------------------------------------------------
 -- 1. config — ค่าตั้งค่าระบบ (key-value)  [ชีต Config]
---    key ที่ใช้: appName, companyName, businessName, weeklyOff,
---               otRateType, otFlatHours, otFlatAmount
+--    key ที่ใช้: appName, companyName, businessName, weeklyOff
+--    (otRateType / otFlatHours / otFlatAmount ถูกยกเลิกใน migration-005)
 --    weeklyOff = CSV ของเลขวัน 0-6 (0 = อาทิตย์)
 -- ---------------------------------------------------------------------------
 create table config (
@@ -153,13 +155,28 @@ create table attendance (
   "checkInTime"  text,          -- 'HH:mm'
   "checkOutTime" text,          -- 'HH:mm'
   "lateMinutes"  numeric default 0,
-  "otMinutes"    numeric default 0,
-  "workHours"    numeric,
+  "workHours"    numeric,       -- ชม.งานปกติ (หักพัก + หัก OT ที่นับได้แล้ว)
   "dayType"      text default 'วันปกติ',
   "status"       text,          -- 'ontime' | 'late'
   "checkInLat"   double precision,
   "checkInLng"   double precision,
   "note"         text,
+
+  -- ===== OT (migration-005) =====
+  "otMinutes"       numeric default 0,  -- นาทีที่นับได้จริง (หลังปัดเศษ/เพดาน/อนุมัติ)
+  "otMinutesRaw"    int     default 0,  -- นาทีดิบก่อนปัดเศษและตัดเพดาน
+  "otBeforeMinutes" int     default 0,
+  "otAfterMinutes"  int     default 0,
+  "otDayType"       text,               -- workday | weekend | holiday
+  "otStatus"        text    default 'none',  -- none|pending|approved|rejected
+  "otRequestId"     text,
+  "otPolicyId"      text,
+  "otNote"          text,
+  -- เตรียมไว้สำหรับเฟสคิดเงิน — ห้ามมีโค้ดอ่าน/เขียนในเฟสนี้
+  "otRate"   numeric,
+  "otAmount" numeric,
+  "otPaid"   boolean default false,
+
   "createdAt"    timestamptz default now(),
   unique ("empId", "date")      -- 1 คน 1 แถวต่อวัน (ตามตรรกะเดิม)
 );
@@ -167,6 +184,7 @@ create table attendance (
 create index attendance_date_idx      on attendance("date");
 create index attendance_emp_date_idx  on attendance("empId", "date");
 create index attendance_branch_idx    on attendance("branchId");
+create index attendance_otstatus_idx  on attendance("otStatus") where "otStatus" = 'pending';
 
 -- ---------------------------------------------------------------------------
 -- 7. leave_requests — คำขอลา  [ชีต LeaveRequests]
@@ -282,6 +300,107 @@ create index noti_emp_idx    on notifications("empId", "createdAt" desc);
 create index noti_unread_idx on notifications("empId") where "isRead" = false;
 
 -- ---------------------------------------------------------------------------
+-- 14. ot_policies — นโยบาย OT (ใช้ทั้งบริษัท มี isActive ได้ทีละ 1 แถว)
+--     รายละเอียดของทุกคอลัมน์ดูที่ supabase/migration-005-overtime.sql
+-- ---------------------------------------------------------------------------
+create table ot_policies (
+  "policyId" text primary key,
+  "name"     text not null default 'นโยบาย OT',
+  "isActive" boolean default false,
+
+  "mode" text not null default 'request_after',
+    -- off | auto | request_after | request_before | admin_only
+
+  "countAfterShift"         boolean default true,
+  "countBeforeShift"        boolean default false,
+  "graceMinutes"            int default 15,
+  "beforeShiftGraceMinutes" int default 15,
+  "minMinutes"              int default 30,
+  "roundMinutes"            int default 30,
+  "roundMode"               text default 'down',   -- down | nearest | up
+  "otBreakMinutes"          int default 0,
+  "otBreakAfterMinutes"     int default 240,
+
+  "maxPerDayMinutes"   int default 240,   -- 0 = ไม่จำกัด
+  "maxPerWeekMinutes"  int default 0,
+  "maxPerMonthMinutes" int default 0,
+
+  "allowHolidayWork"      boolean default true,
+  "holidayNeedsRequest"   boolean default true,
+  "holidayCountsAllHours" boolean default true,
+
+  -- เตรียมไว้สำหรับเฟสคิดเงิน — ห้ามมีโค้ดอ่านในเฟสนี้
+  "payMode"        text    default 'none',
+  "hourlyBasis"    text    default 'monthly_30_8',
+  "customHourly"   numeric,
+  "rateWorkday"    numeric default 1.5,
+  "rateWeekend"    numeric default 2,
+  "rateHoliday"    numeric default 3,
+  "flatPerHour"    numeric,
+  "flatPerSession" numeric,
+  "showAmountToEmployee" boolean default false,
+
+  "createdAt" timestamptz default now(),
+  "updatedAt" timestamptz default now(),
+  "updatedBy" text
+);
+
+create unique index ot_policy_single_active
+  on ot_policies (("isActive")) where "isActive" = true;
+
+-- ---------------------------------------------------------------------------
+-- 15. ot_requests — ใบขอ/ใบอนุมัติ OT
+-- ---------------------------------------------------------------------------
+create table ot_requests (
+  "otId"     text primary key,
+  "empId"    text not null references profiles("empId") on delete cascade,
+  "empName"  text,
+  "branchId" text,
+  "date"     date not null,
+
+  "dayType" text,   -- workday | weekend | holiday
+  "source"  text,   -- employee | system | admin
+  "kind"    text,   -- after_shift | before_shift | holiday_work
+
+  "plannedStart" text,   -- 'HH:mm'
+  "plannedEnd"   text,
+  "actualStart"  text,
+  "actualEnd"    text,
+
+  "minutesRequested" int default 0,
+  "minutesApproved"  int,
+  "reason"    text,
+  "adminNote" text,
+
+  "status"      text default 'pending',  -- pending|approved|rejected|cancelled
+  "requestedAt" text,                    -- 'yyyy-MM-dd HH:mm'
+  "decidedAt"   text,
+  "decidedBy"   text,
+
+  "policyId" text,
+
+  -- เตรียมไว้สำหรับเฟสคิดเงิน
+  "rateUsed" numeric,
+  "amount"   numeric,
+
+  "createdAt" timestamptz default now()
+);
+
+create index ot_req_emp_idx    on ot_requests("empId", "date" desc);
+create index ot_req_status_idx on ot_requests("status");
+create index ot_req_date_idx   on ot_requests("date");
+
+create unique index ot_req_unique_active
+  on ot_requests("empId", "date", "kind")
+  where "status" in ('pending', 'approved');
+
+-- ---------------------------------------------------------------------------
+-- นโยบาย OT เริ่มต้น
+-- ---------------------------------------------------------------------------
+insert into ot_policies ("policyId", "name", "isActive", "mode")
+values ('OTP-default', 'นโยบาย OT เริ่มต้น', true, 'request_after');
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security
 -- ทุกการอ่าน/เขียนของแอปวิ่งผ่าน API route ฝั่งเซิร์ฟเวอร์ด้วย service_role key
 -- (service_role bypass RLS) จึงเปิด RLS ไว้แบบ "ไม่มี policy" = ปิดตายจากฝั่ง
@@ -300,6 +419,8 @@ alter table webauthn_credentials enable row level security;
 alter table checkin_audit         enable row level security;
 alter table leave_assignments     enable row level security;
 alter table notifications         enable row level security;
+alter table ot_policies           enable row level security;
+alter table ot_requests           enable row level security;
 
 -- ให้ผู้ใช้ที่ล็อกอินอ่าน profile ของตัวเองได้ (เผื่อใช้ฝั่ง client ในอนาคต)
 create policy "own profile readable"

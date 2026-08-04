@@ -34,6 +34,7 @@ import {
 import {
   listNotifications, unreadCount, markNotificationsRead,
 } from './api/notifications';
+import { getOtPolicy, saveOtPolicy } from './api/overtime';
 
 type Fn = (...args: any[]) => any;
 
@@ -53,6 +54,7 @@ export const ADMIN_FNS = new Set([
   'listLeaveAssignments', 'saveLeaveAssignments', 'leaveAssignSummary',
   'monthlyReport', 'dailyReport', 'exportMonthlyReportXlsx',
   'getConfig', 'setConfig',
+  'getOtPolicy', 'saveOtPolicy',
 ]);
 
 /**
@@ -118,4 +120,6 @@ export const REGISTRY: Record<string, Fn> = {
   listNotifications, unreadCount, markNotificationsRead,
   /* Reports */
   monthlyReport, dailyReport, exportMonthlyReportXlsx,
+  /* OT */
+  getOtPolicy, saveOtPolicy,
 };

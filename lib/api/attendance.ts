@@ -11,6 +11,10 @@ import {
   uid, today, nowHHMM, toMinutes, normalizeAtt, normalizeBranch, asDateStr,
   computeWorkHours,
 } from '../helpers';
+import { holidayMap, weeklyOffArr, dayTypeOf } from './holidays';
+import {
+  activePolicy, computeOt, usedMinutes, OtDayType,
+} from './overtime';
 
 /** ดึงข้อมูลสาขาตาม id (normalize เวลาเป็น string แล้ว) */
 export async function getBranch(branchId: string): Promise<any> {
@@ -99,40 +103,112 @@ export async function writeCheckIn(
 }
 
 /**
+ * ประเภทวันสำหรับการคิด OT
+ *
+ * คำนวณสด ๆ จากวันที่ของแถวเสมอ ไม่เชื่อค่าที่บันทึกไว้ตอนเช็คอิน
+ * เพราะแอดมินคีย์ย้อนหลัง / อนุมัติคำขอแก้เวลา ก็ต้องได้ประเภทวันที่ถูกต้อง
+ */
+export async function otDayTypeOf(dateStr: string): Promise<OtDayType> {
+  const [hmap, woff] = await Promise.all([holidayMap(), weeklyOffArr()]);
+  const t = dayTypeOf(asDateStr(dateStr), hmap, woff).type;
+  return t === 'work' ? 'workday' : (t as OtDayType);
+}
+
+/** นาที OT ที่ได้รับอนุมัติล่วงหน้าของวันนั้น (ใช้กับโหมด request_before) */
+async function approvedOtMinutes(empId: string, dateStr: string): Promise<number> {
+  try {
+    const rows = await readObjects(T.OTREQUESTS, { empId, date: dateStr });
+    return (rows as any[])
+      .filter((r) => String(r.status) === 'approved')
+      .reduce((s, r) => {
+        const v = r.minutesApproved == null ? r.minutesRequested : r.minutesApproved;
+        return s + Math.max(0, Number(v) || 0);
+      }, 0);
+  } catch {
+    // ยังไม่ได้รัน migration-005 — ถือว่ายังไม่มีใบอนุมัติ
+    return 0;
+  }
+}
+
+/**
  * เขียนเวลาออก + คำนวณ OT และชั่วโมงงาน
- *   otMinutes = max(0, outMin - endMin)
- *   workHours = computeWorkHours(outMin - inMin, breakHours, breakAfterHours)
+ *
+ * **ชั่วโมงงานกับ OT ต้องไม่นับซ้ำกัน** — ยึดสมการนี้เสมอ
+ *
+ *     workHours + otMinutes/60  =  (เวลาออก − เวลาเข้า) − เวลาพัก
+ *
+ * จึงหัก "นาที OT ที่นับได้" ออกจาก workHours (ไม่ใช่ตัดที่ workEnd ตรง ๆ
+ * เพราะถ้าตัดตรง ๆ แล้วทำเกิน 20 นาทีแต่ขั้นต่ำ OT คือ 30 นาที
+ * เวลา 20 นาทีนั้นจะหายไปจากทั้งสองช่องโดยไม่มีใครรู้)
  *
  * หมายเหตุ: หักเวลาพักเมื่อทำงานถึงเกณฑ์ `breakAfterHours` เท่านั้น
- * (ของเดิมหักทุกกรณี ทำให้กะสั้น ๆ ได้ชั่วโมงติดลบแล้วถูกตัดเป็น 0)
  */
 export async function writeCheckOut(att: any, time: string) {
   const branch = await getBranch(att.branchId);
+  const startMin = toMinutes(branch.workStart || '08:00') ?? 480;
   const endMin = toMinutes(branch.workEnd || '17:00') ?? 1020;
   const outMin = toMinutes(time) ?? 0;
   const inMin = toMinutes(att.checkInTime);
+  const dateStr = asDateStr(att.date);
 
-  const otMinutes = Math.max(0, outMin - endMin);
+  const [policy, dayType] = await Promise.all([
+    activePolicy(),
+    otDayTypeOf(dateStr),
+  ]);
+
+  const approvedMinutes =
+    policy.mode === 'request_before'
+      ? await approvedOtMinutes(att.empId, dateStr)
+      : 0;
+
+  // ไม่ได้ตั้งเพดานสัปดาห์/เดือน -> ฟังก์ชันนี้จะไม่ยิงฐานข้อมูลเลย
+  const used = await usedMinutes(att.empId, dateStr, policy, att.recId);
+
+  const ot = computeOt({
+    checkInMin: inMin == null ? NaN : inMin,
+    checkOutMin: outMin,
+    workStartMin: startMin,
+    workEndMin: endMin,
+    dayType,
+    policy,
+    approvedMinutes,
+    usedThisWeek: used.week,
+    usedThisMonth: used.month,
+  });
 
   let workHours: number | null = null;
   if (inMin != null) {
-    workHours = computeWorkHours(
+    const net = computeWorkHours(
       outMin - inMin,
       Number(branch.breakHours || 0),
       branch.breakAfterHours
     ).net;
+    workHours = Math.round(Math.max(0, net - ot.countable / 60) * 100) / 100;
   }
 
-  await updateByKey(T.ATTENDANCE, 'recId', att.recId, {
+  const patch: any = {
     checkOutTime: time,
-    otMinutes,
+    otMinutes: ot.countable,
+    otMinutesRaw: ot.raw,
+    otBeforeMinutes: ot.before,
+    otAfterMinutes: ot.after,
+    otDayType: dayType,
+    otStatus: ot.status,
+    otPolicyId: policy.policyId,
+    otNote: ot.note || null,
     workHours,
-  });
+  };
+
+  await updateByKey(T.ATTENDANCE, 'recId', att.recId, patch);
 
   return {
     recId: att.recId,
     checkOutTime: time,
-    otMinutes,
+    otMinutes: ot.countable,
+    otMinutesRaw: ot.raw,
+    otStatus: ot.status,
+    otDayType: dayType,
+    otNote: ot.note || '',
     workHours: workHours == null ? '' : workHours,
   };
 }

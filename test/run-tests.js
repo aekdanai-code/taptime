@@ -34,6 +34,7 @@ const employeeApi = require(path.join(LIB, 'api/employeeApi'));
 const leaves = require(path.join(LIB, 'api/leaves'));
 const timeEdits = require(path.join(LIB, 'api/timeEdits'));
 const reports = require(path.join(LIB, 'api/reports'));
+const overtime = require(path.join(LIB, 'api/overtime'));
 
 let pass = 0, fail = 0;
 async function t(name, fn) {
@@ -137,10 +138,13 @@ async function t(name, fn) {
     assert.strictEqual(r.status, 'ontime');
   });
 
-  await t('writeCheckOut: 17:02 -> OT 2 นาที, workHours 7.42 (ตรงกับข้อมูลเดิม)', async () => {
+  await t('writeCheckOut: 17:02 -> ยังไม่เกินผ่อนผัน 15 นาที จึงไม่มี OT', async () => {
     const att = await attendance.attendanceOf('TEST-1', '2026-07-31'); // เข้า 08:37
     const r = await attendance.writeCheckOut(att, '17:02');
-    assert.strictEqual(r.otMinutes, 2);
+    // กฎเก่าให้ OT 2 นาที (max(0, ออก - workEnd)) โดยไม่มีผ่อนผัน/ขั้นต่ำ
+    // นโยบายเริ่มต้นใหม่: grace 15 นาที -> อยู่ต่อ 2 นาทีไม่ถือเป็น OT
+    assert.strictEqual(r.otMinutes, 0);
+    assert.strictEqual(r.otMinutesRaw, 0);
     assert.strictEqual(r.workHours, 7.42); // (1022-517)/60 - 1 = 7.4166 -> 7.42
   });
 
@@ -290,8 +294,10 @@ async function t(name, fn) {
     await timeEdits.decideTimeEdit(list[0].editId, 'approved');
     const att = await attendance.attendanceOf('EMP-f3795df3', '2026-07-27');
     assert.strictEqual(att.checkOutTime, '17:30');
-    assert.strictEqual(att.otMinutes, 30);   // 17:30 - 17:00
-    assert.strictEqual(att.workHours, 8.5);  // (1050-480)/60 - 1
+    assert.strictEqual(att.otMinutes, 30);   // 17:30 - 17:00 (เกินผ่อนผัน 15 นาที)
+    assert.strictEqual(att.otStatus, 'pending'); // โหมด request_after -> รออนุมัติ
+    // ชั่วโมงงานปกติต้อง "ไม่รวม" OT: (1050-480)/60 - พัก 1 - OT 0.5 = 8
+    assert.strictEqual(att.workHours, 8);
     assert.strictEqual((await timeEdits.listTimeEdits('pending')).length, 0);
   });
 
@@ -1143,6 +1149,302 @@ async function t(name, fn) {
       .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
     assert.ok(h.includes('ให้สิทธิ์พนักงานทุกคน'), 'ขาดตัวเลือก assign ทุกคน');
     assert.ok(h.includes('แสดงจำนวนวันลา/ปี ในหน้าพนักงาน'), 'ขาด checkbox showQuota');
+  });
+
+  console.log('\n── OT: computeOt (สูตรบริสุทธิ์) ───────────');
+
+  /** นโยบายทดสอบ — ปรับเฉพาะฟิลด์ที่สนใจ */
+  const pol = (over) => overtime.normalizePolicy({
+    ...overtime.DEFAULT_POLICY, ...over,
+  });
+  /** เข้า 08:00 ออกตามที่ระบุ กะ 08:00-17:00 */
+  const ot = (outHHMM, over, extra) => overtime.computeOt({
+    checkInMin: 8 * 60,
+    checkOutMin: helpers.toMinutes(outHHMM),
+    workStartMin: 8 * 60,
+    workEndMin: 17 * 60,
+    dayType: (over && over.__day) || 'workday',
+    policy: pol(over),
+    ...(extra || {}),
+  });
+
+  await t('OT: โหมด off -> ไม่นับอะไรเลย', () => {
+    const r = ot('20:00', { mode: 'off' });
+    assert.deepStrictEqual(
+      { raw: r.raw, countable: r.countable, status: r.status },
+      { raw: 0, countable: 0, status: 'none' }
+    );
+  });
+
+  await t('OT: เวลาออก <= เวลาเข้า -> 0 + note cross_midnight_unsupported', () => {
+    for (const out of ['08:00', '02:00', '07:59']) {
+      const r = overtime.computeOt({
+        checkInMin: 8 * 60, checkOutMin: helpers.toMinutes(out),
+        workStartMin: 480, workEndMin: 1020,
+        dayType: 'workday', policy: pol({ mode: 'auto' }),
+      });
+      assert.strictEqual(r.countable, 0, 'ควรได้ 0 เมื่อออก ' + out);
+      assert.strictEqual(r.note, 'cross_midnight_unsupported');
+    }
+  });
+
+  await t('OT: grace ต้อง "เกิน" ไม่ใช่ "เท่ากับ"', () => {
+    const p = { mode: 'auto', graceMinutes: 15, minMinutes: 0, roundMinutes: 0 };
+    assert.strictEqual(ot('17:15', p).raw, 0, 'เท่ากับ grace พอดี ต้องไม่นับ');
+    assert.strictEqual(ot('17:16', p).raw, 16, 'เกิน grace 1 นาที ต้องนับทั้ง 16 นาที');
+  });
+
+  await t('OT: ขั้นต่ำตัดทั้งก้อน ไม่ใช่ตัดเศษ', () => {
+    const p = { mode: 'auto', graceMinutes: 0, minMinutes: 30, roundMinutes: 0 };
+    assert.strictEqual(ot('17:25', p).countable, 0, '25 นาที < ขั้นต่ำ 30 -> 0');
+    assert.strictEqual(ot('17:30', p).countable, 30, '30 นาที = ขั้นต่ำ -> ผ่าน');
+  });
+
+  await t('OT: ปัดเศษ 3 แบบ + roundMinutes = 0 คือไม่ปัด', () => {
+    const base = { mode: 'auto', graceMinutes: 0, minMinutes: 0, roundMinutes: 30 };
+    // ทำเกิน 100 นาที (17:00 -> 18:40)
+    assert.strictEqual(ot('18:40', { ...base, roundMode: 'down' }).countable, 90);
+    assert.strictEqual(ot('18:40', { ...base, roundMode: 'nearest' }).countable, 90);
+    assert.strictEqual(ot('18:40', { ...base, roundMode: 'up' }).countable, 120);
+    // 105 นาที -> nearest ควรขึ้นเป็น 120
+    assert.strictEqual(ot('18:45', { ...base, roundMode: 'nearest' }).countable, 120);
+    assert.strictEqual(ot('18:40', { ...base, roundMinutes: 0 }).countable, 100);
+  });
+
+  await t('OT: หักพักเมื่อถึง/ไม่ถึงเกณฑ์', () => {
+    const p = {
+      mode: 'auto', graceMinutes: 0, minMinutes: 0, roundMinutes: 0,
+      otBreakMinutes: 30, otBreakAfterMinutes: 240,
+    };
+    assert.strictEqual(ot('20:59', p).countable, 239, 'ยังไม่ถึง 240 -> ไม่หัก');
+    assert.strictEqual(ot('21:00', p).countable, 210, 'ถึง 240 -> หัก 30');
+  });
+
+  await t('OT: countBeforeShift เปิด/ปิด', () => {
+    const p = {
+      mode: 'auto', graceMinutes: 0, beforeShiftGraceMinutes: 15,
+      minMinutes: 0, roundMinutes: 0,
+    };
+    const call = (before) => overtime.computeOt({
+      checkInMin: helpers.toMinutes('06:30'), checkOutMin: helpers.toMinutes('17:00'),
+      workStartMin: 480, workEndMin: 1020, dayType: 'workday',
+      policy: pol({ ...p, countBeforeShift: before }),
+    });
+    assert.strictEqual(call(false).before, 0);
+    assert.strictEqual(call(true).before, 90, 'มาก่อน 90 นาที เกินผ่อนผัน 15');
+    assert.strictEqual(call(true).countable, 90);
+  });
+
+  await t('OT: เพดาน 3 ระดับซ้อนกัน + 0 = ไม่จำกัด', () => {
+    const p = { mode: 'auto', graceMinutes: 0, minMinutes: 0, roundMinutes: 0 };
+    // ทำ 300 นาที (17:00 -> 22:00)
+    assert.strictEqual(ot('22:00', { ...p, maxPerDayMinutes: 0 }).countable, 300);
+    assert.strictEqual(ot('22:00', { ...p, maxPerDayMinutes: 240 }).countable, 240);
+    // เพดานสัปดาห์ 600 ใช้ไปแล้ว 480 -> เหลือ 120
+    assert.strictEqual(
+      ot('22:00', { ...p, maxPerDayMinutes: 0, maxPerWeekMinutes: 600 },
+        { usedThisWeek: 480 }).countable, 120);
+    // เพดานเดือนตัดต่อจากสัปดาห์อีกชั้น -> เหลือ 60
+    assert.strictEqual(
+      ot('22:00',
+        { ...p, maxPerDayMinutes: 0, maxPerWeekMinutes: 600, maxPerMonthMinutes: 900 },
+        { usedThisWeek: 480, usedThisMonth: 840 }).countable, 60);
+    // ใช้เกินเพดานไปแล้ว -> 0 ไม่ใช่ค่าติดลบ
+    assert.strictEqual(
+      ot('22:00', { ...p, maxPerDayMinutes: 0, maxPerWeekMinutes: 600 },
+        { usedThisWeek: 900 }).countable, 0);
+  });
+
+  await t('OT: วันหยุด นับทั้งวัน vs นับเฉพาะส่วนเกิน', () => {
+    const p = { mode: 'auto', graceMinutes: 0, minMinutes: 0, roundMinutes: 0,
+                maxPerDayMinutes: 0 };
+    // ทำ 08:00-12:00 ในวันหยุด
+    const all = overtime.computeOt({
+      checkInMin: 480, checkOutMin: 720, workStartMin: 480, workEndMin: 1020,
+      dayType: 'holiday', policy: pol({ ...p, holidayCountsAllHours: true }),
+    });
+    assert.strictEqual(all.countable, 240, 'นับทั้งวัน = 4 ชม.');
+    const partial = overtime.computeOt({
+      checkInMin: 480, checkOutMin: 720, workStartMin: 480, workEndMin: 1020,
+      dayType: 'holiday', policy: pol({ ...p, holidayCountsAllHours: false }),
+    });
+    assert.strictEqual(partial.countable, 0, 'เลิกก่อน workEnd -> ไม่มีส่วนเกิน');
+  });
+
+  await t('OT: แต่ละโหมดให้ status ถูกต้อง', () => {
+    const p = { graceMinutes: 0, minMinutes: 0, roundMinutes: 0 };
+    assert.deepStrictEqual(
+      ['auto', 'request_after', 'admin_only'].map((mode) => {
+        const r = ot('19:00', { ...p, mode });
+        return [r.countable, r.status];
+      }),
+      [[120, 'approved'], [120, 'pending'], [0, 'none']]
+    );
+    // ไม่มี OT เลย -> status ต้องเป็น none ไม่ใช่ approved/pending
+    assert.strictEqual(ot('17:00', { ...p, mode: 'auto' }).status, 'none');
+    assert.strictEqual(ot('17:00', { ...p, mode: 'request_after' }).status, 'none');
+  });
+
+  await t('OT: request_before ทำเกินใบที่ขอ -> ตัดตามใบ', () => {
+    const p = { mode: 'request_before', graceMinutes: 0, minMinutes: 0, roundMinutes: 0 };
+    const over = ot('19:00', p, { approvedMinutes: 60 });   // ทำ 120 ขอไว้ 60
+    assert.strictEqual(over.countable, 60);
+    assert.strictEqual(over.status, 'approved');
+    assert.strictEqual(over.note, 'capped_by_request');
+    // ทำน้อยกว่าที่ขอ -> ได้เท่าที่ทำจริง
+    assert.strictEqual(ot('18:00', p, { approvedMinutes: 120 }).countable, 60);
+    // ไม่มีใบอนุมัติ -> ไม่นับ
+    assert.strictEqual(ot('19:00', p, { approvedMinutes: 0 }).countable, 0);
+    assert.strictEqual(ot('19:00', p, { approvedMinutes: 0 }).status, 'none');
+  });
+
+  await t('OT: ค่าดิบถูกเก็บไว้เสมอแม้จะนับไม่ได้ (ไว้ตรวจย้อนหลัง)', () => {
+    const r = ot('17:20', { mode: 'auto', graceMinutes: 0, minMinutes: 30 });
+    assert.strictEqual(r.raw, 20, 'raw ต้องเก็บค่าจริง');
+    assert.strictEqual(r.countable, 0, 'แต่ไม่ถึงขั้นต่ำจึงนับไม่ได้');
+  });
+
+  await t('OT: normalizePolicy แปลง string/checkbox จากฟอร์มได้', () => {
+    const p = overtime.normalizePolicy({
+      mode: 'auto', graceMinutes: '20', minMinutes: '0',
+      countAfterShift: 'true', countBeforeShift: 'false',
+      roundMode: 'ไม่มีค่านี้', maxPerDayMinutes: '-5',
+    });
+    assert.strictEqual(p.graceMinutes, 20);
+    assert.strictEqual(p.countAfterShift, true);
+    assert.strictEqual(p.countBeforeShift, false);
+    assert.strictEqual(p.roundMode, 'down', 'ค่าที่ไม่รู้จักต้องกลับไปใช้ค่าเริ่มต้น');
+    assert.strictEqual(p.maxPerDayMinutes, 0, 'ค่าติดลบต้องถูกตัดเป็น 0');
+    assert.strictEqual(overtime.normalizePolicy({ mode: 'พิมพ์มั่ว' }).mode, 'request_after');
+  });
+
+  await t('OT: สัปดาห์นับจันทร์–อาทิตย์', () => {
+    // 2026-08-04 คือวันอังคาร -> สัปดาห์คือ 03(จ) ถึง 09(อา)
+    assert.deepStrictEqual(overtime.weekRange('2026-08-04'), ['2026-08-03', '2026-08-09']);
+    // วันอาทิตย์ต้องเป็น "วันสุดท้าย" ของสัปดาห์ ไม่ใช่วันแรก
+    assert.deepStrictEqual(overtime.weekRange('2026-08-09'), ['2026-08-03', '2026-08-09']);
+    assert.deepStrictEqual(overtime.weekRange('2026-08-03'), ['2026-08-03', '2026-08-09']);
+  });
+
+  await t('OT: employeeOtView ไม่ส่งฟิลด์เกี่ยวกับเงินไปฝั่งพนักงาน', () => {
+    const v = overtime.employeeOtView(pol({ mode: 'request_after' }));
+    const keys = Object.keys(v).join(',');
+    ['pay', 'rate', 'flat', 'hourly', 'amount', 'salary'].forEach((bad) => {
+      assert.ok(keys.toLowerCase().indexOf(bad) === -1, 'หลุดฟิลด์เงิน: ' + bad);
+    });
+    assert.strictEqual(v.canRequest, true);
+    assert.strictEqual(overtime.employeeOtView(pol({ mode: 'auto' })).canRequest, false);
+    assert.strictEqual(overtime.employeeOtView(pol({ mode: 'off' })).enabled, false);
+  });
+
+  console.log('\n── OT: เชื่อมกับการเช็คเอาท์จริง ───────────');
+
+  await t('OT: writeCheckOut เขียนคอลัมน์ OT ครบทุกช่อง', async () => {
+    const att = await attendance.attendanceOf('TEST-2', '2026-07-31'); // เข้า 08:10
+    const r = await attendance.writeCheckOut(att, '19:20');
+    const row = await attendance.attendanceOf('TEST-2', '2026-07-31');
+    ['otMinutes', 'otMinutesRaw', 'otBeforeMinutes', 'otAfterMinutes',
+     'otDayType', 'otStatus', 'otPolicyId']
+      .forEach((k) => assert.ok(row[k] !== undefined, 'ไม่ได้เขียน ' + k));
+    assert.strictEqual(row.otMinutesRaw, 140);   // 19:20 - 17:00
+    assert.strictEqual(row.otMinutes, 120);      // ปัดลงทีละ 30
+    assert.strictEqual(row.otDayType, 'workday');
+    assert.strictEqual(row.otStatus, 'pending'); // นโยบายเริ่มต้น = request_after
+    assert.strictEqual(r.otNote, '');
+  });
+
+  await t('OT: ชั่วโมงงานปกติ + OT ต้องไม่นับซ้ำกัน', async () => {
+    const row = await attendance.attendanceOf('TEST-2', '2026-07-31');
+    // อยู่จริง 08:10-19:20 = 670 นาที, หักพัก 60 -> 610 นาที = 10.17 ชม.
+    // OT ที่นับได้ 120 นาที = 2 ชม. -> ชั่วโมงงานปกติต้องเหลือ 8.17
+    assert.strictEqual(row.workHours, 8.17);
+    const total = row.workHours + row.otMinutes / 60;
+    assert.ok(Math.abs(total - 10.17) < 0.02, 'ผลรวมต้องกระทบยอดได้: ' + total);
+  });
+
+  await t('OT: เช็คเอาท์ก่อนเช็คอิน -> ไม่คำนวณ + บันทึกเหตุผลไว้', async () => {
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31'); // เข้า 08:37
+    const r = await attendance.writeCheckOut(att, '02:00');
+    assert.strictEqual(r.otMinutes, 0);
+    assert.strictEqual(r.otNote, 'cross_midnight_unsupported');
+    const row = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    assert.strictEqual(row.otNote, 'cross_midnight_unsupported');
+  });
+
+  await t('OT: getOtPolicy คืนนโยบายที่ isActive', async () => {
+    const p = await overtime.getOtPolicy();
+    assert.strictEqual(p.policyId, 'OTP-default');
+    assert.strictEqual(p.mode, 'request_after');
+    assert.strictEqual(p.isActive, true);
+  });
+
+  await t('OT: saveOtPolicy สร้างแถวใหม่ ไม่ทับของเก่า (เก็บประวัติกฎ)', async () => {
+    const saved = await overtime.saveOtPolicy({ mode: 'auto', graceMinutes: 5 });
+    assert.notStrictEqual(saved.policyId, 'OTP-default', 'ต้องได้ policyId ใหม่');
+    assert.strictEqual(saved.mode, 'auto');
+    assert.strictEqual(saved.graceMinutes, 5);
+
+    const now = await overtime.getOtPolicy();
+    assert.strictEqual(now.policyId, saved.policyId, 'แถวใหม่ต้องเป็นตัวที่ active');
+
+    // แถวเก่ายังอยู่ แต่ถูกปิด active แล้ว (มี active ได้ทีละแถว)
+    const rows = await require(path.join(LIB, 'db')).readObjects('ot_policies');
+    assert.ok(rows.length >= 2, 'แถวเก่าต้องยังอยู่');
+    assert.strictEqual(rows.filter((r) => r.isActive).length, 1);
+
+    // คืนค่าเดิมเพื่อไม่ให้กระทบเทสต์ข้ออื่น
+    await overtime.saveOtPolicy(overtime.DEFAULT_POLICY);
+  });
+
+  await t('OT: adminBootstrap ส่ง otPolicy มาให้หน้าแอดมินตั้งแต่โหลด', async () => {
+    const b = await config.adminBootstrap();
+    assert.ok(b.otPolicy, 'ไม่มี otPolicy ใน adminBootstrap');
+    assert.ok(['off', 'auto', 'request_after', 'request_before', 'admin_only']
+      .indexOf(b.otPolicy.mode) >= 0);
+  });
+
+  await t('OT: getOtPolicy/saveOtPolicy อยู่ในกลุ่มสิทธิ์แอดมิน', () => {
+    const R = require(path.join(LIB, 'rpc'));
+    assert.ok(R.ADMIN_FNS.has('getOtPolicy'));
+    assert.ok(R.ADMIN_FNS.has('saveOtPolicy'));
+    assert.ok(!R.EMPLOYEE_FNS.has('saveOtPolicy'), 'พนักงานต้องแก้นโยบายไม่ได้');
+    assert.ok(R.REGISTRY.getOtPolicy && R.REGISTRY.saveOtPolicy);
+  });
+
+  await t('OT: ไม่มีโค้ดใดอ่าน/เขียนคอลัมน์ฝั่งการจ่ายในเฟสนี้', () => {
+    const files = ['api/overtime.js', 'api/attendance.js', 'api/config.js', 'api/reports.js']
+      .map((f) => {
+        try { return fs.readFileSync(path.join(LIB, f), 'utf8'); } catch { return ''; }
+      }).join('\n');
+    // ชื่อคอลัมน์ต้องไม่ถูกอ้างถึงในโค้ดที่ทำงานจริง
+    ['otRate', 'otAmount', 'otPaid', 'rateUsed', 'payMode', 'hourlyBasis',
+     'rateWorkday', 'rateWeekend', 'rateHoliday', 'flatPerHour', 'flatPerSession']
+      .forEach((col) => {
+        assert.ok(files.indexOf(col) === -1, 'เฟสนี้ยังไม่ควรมีโค้ดแตะ ' + col);
+      });
+  });
+
+  await t('OT: หน้าตั้งค่า OT มีครบทั้ง 4 การ์ด + พรีวิวสด', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['ตั้งค่า OT', 'โหมดการทำงาน', 'กฎการนับเวลา', 'เพดาน OT', 'การทำงานวันหยุด',
+     'ทดลองคำนวณ', 'function otPreview', 'renderOtPolicy']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    // ครบทั้ง 5 โหมด
+    ['off', 'auto', 'request_after', 'request_before', 'admin_only']
+      .forEach((m) => assert.ok(h.includes("'" + m + "'"), 'ขาดโหมด ' + m));
+    assert.ok(h.includes("otpolicy:renderOtPolicy"), 'ยังไม่ผูกกับเมนู');
+    assert.ok(h.includes('data-tab="otpolicy"'), 'ยังไม่มีเมนูใน sidebar');
+  });
+
+  await t('OT: พรีวิวฝั่งหน้าเว็บใช้ลำดับขั้นเดียวกับเซิร์ฟเวอร์', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    // ลำดับต้องเป็น หักพัก -> ปัดเศษ -> ขั้นต่ำ -> เพดาน
+    const order = ['2. หักพัก', '3. ปัดเศษ', '4. ขั้นต่ำ', '5. เพดานต่อวัน']
+      .map((s) => h.indexOf(s));
+    order.forEach((i, n) => assert.ok(i > 0, 'ไม่พบขั้นที่ ' + (n + 2)));
+    for (let i = 1; i < order.length; i++)
+      assert.ok(order[i] > order[i - 1], 'ลำดับขั้นในพรีวิวสลับกัน');
+    assert.ok(h.includes('cross_midnight_unsupported'), 'พรีวิวไม่ได้เตือนเรื่องกะข้ามคืน');
   });
 
   console.log('\n── ปุ่มสไลด์เช็คอิน/เอาท์ ──────────────────');

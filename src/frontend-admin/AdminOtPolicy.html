@@ -1,0 +1,279 @@
+<script>
+/* ============ เมนู: ตั้งค่า OT ============
+ *
+ * กฎ OT ซ้อนกัน 5 ชั้น (grace -> หักพัก -> ปัดเศษ -> ขั้นต่ำ -> เพดาน)
+ * คนตั้งค่างงง่ายมาก จึงมี "กล่องพรีวิวสด" ที่คำนวณให้ดูทีละขั้น
+ * สูตรในพรีวิวคือสูตรเดียวกับ lib/api/overtime.ts (computeOt)
+ */
+
+var OTP = null;   // นโยบายที่กำลังแก้อยู่
+
+var OT_MODES = [
+  ['off',            'ปิดระบบ OT',        'ซ่อนทุกอย่างที่เกี่ยวกับ OT ทั้งฝั่งแอดมินและพนักงาน'],
+  ['auto',           'นับอัตโนมัติ',       'เช็คเอาท์เกินเวลาเลิกงาน ระบบนับให้ทันที ไม่ต้องอนุมัติ'],
+  ['request_after',  'นับก่อน แล้วค่อยอนุมัติ', 'ระบบนับให้แต่ขึ้นสถานะ "รออนุมัติ" จนแอดมินกดยืนยัน'],
+  ['request_before', 'ต้องขออนุมัติก่อนทำ',  'พนักงานยื่นล่วงหน้า อนุมัติแล้วจึงนับ ทำเกินใบที่ขอจะถูกตัด'],
+  ['admin_only',     'แอดมินคีย์ให้เท่านั้น', 'พนักงานยื่นไม่ได้ ระบบไม่นับให้เอง แอดมินบันทึกให้อย่างเดียว']
+];
+
+function renderOtPolicy(){
+  loading('กำลังโหลดนโยบาย OT...');
+  run('getOtPolicy').then(function(p){
+    OTP = p || {};
+    drawOtPolicy();
+  });
+}
+
+function otCk(id,label,sub,val){
+  return '<label class="ckline"><input type="checkbox" id="'+id+'"'+(val?' checked':'')+
+    ' onchange="otPreview()"><span>'+label+
+    (sub?'<span class="cksub"> — '+sub+'</span>':'')+'</span></label>';
+}
+function otNum(id,val,min,step){
+  return '<input id="'+id+'" type="number" min="'+(min==null?0:min)+'" step="'+(step||1)+
+    '" value="'+esc(val)+'" oninput="otPreview()">';
+}
+
+function drawOtPolicy(){
+  var p = OTP;
+  var modeCards = OT_MODES.map(function(m){
+    var on = p.mode === m[0];
+    return '<label class="ot-mode'+(on?' on':'')+'">'+
+      '<input type="radio" name="ot_mode" value="'+m[0]+'"'+(on?' checked':'')+
+        ' onchange="otModeChanged(this.value)">'+
+      '<div><div class="mn">'+esc(m[1])+'</div><div class="md">'+esc(m[2])+'</div></div>'+
+    '</label>';
+  }).join('');
+
+  $('content').innerHTML=
+    '<div class="page-title">ตั้งค่า OT (ล่วงเวลา)</div>'+
+    '<div class="page-sub">นโยบายชุดเดียวใช้ทั้งบริษัท ทุกสาขาใช้กฎเดียวกัน · '+
+      'ระบบนี้เก็บ "ชั่วโมง" อย่างเดียว ยังไม่คิดเป็นเงิน</div>'+
+
+    /* ---- 1. โหมด ---- */
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('zap')+'</div><div>'+
+      '<h3>โหมดการทำงาน</h3><p>กำหนดว่า OT จะเกิดขึ้นได้อย่างไร</p></div></div>'+
+      '<div class="ot-modes">'+modeCards+'</div>'+
+    '</div>'+
+
+    '<div id="otRules"'+(p.mode==='off'?' class="hide"':'')+'>'+
+
+    /* ---- 2. กฎการนับ ---- */
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('clock')+'</div><div>'+
+      '<h3>กฎการนับเวลา</h3><p>ลำดับการคำนวณ: ช่วงผ่อนผัน → หักพัก → ปัดเศษ → ขั้นต่ำ → เพดาน</p></div></div>'+
+
+      otCk('o_after','นับ OT หลังเวลาเลิกงาน','อยู่ต่อหลังเลิกงานถือเป็น OT',p.countAfterShift)+
+      '<div class="field"><label>ช่วงผ่อนผันหลังเลิกงาน (นาที)</label>'+
+        '<div class="hint">อยู่ต่อไม่เกินจำนวนนี้ยังไม่นับเป็น OT · ต้อง "เกิน" ไม่ใช่ "เท่ากับ"</div>'+
+        otNum('o_grace',p.graceMinutes)+'</div>'+
+
+      otCk('o_before','นับ OT ก่อนเวลาเข้างาน','มาก่อนเวลาแล้วเริ่มทำงานเลย',p.countBeforeShift)+
+      '<div class="field"><label>ช่วงผ่อนผันก่อนเข้างาน (นาที)</label>'+
+        '<div class="hint">มาก่อนเวลาไม่เกินจำนวนนี้ยังไม่นับเป็น OT</div>'+
+        otNum('o_bgrace',p.beforeShiftGraceMinutes)+'</div>'+
+
+      '<div class="f-row three">'+
+        fld('ขั้นต่ำต่อครั้ง (นาที)',false,otNum('o_min',p.minMinutes))+
+        fld('ปัดเศษเป็นช่วงละ (นาที)',false,otNum('o_round',p.roundMinutes))+
+        fld('วิธีปัดเศษ',false,
+          '<select id="o_rmode" onchange="otPreview()">'+
+          '<option value="down"'+(p.roundMode==='down'?' selected':'')+'>ปัดลง</option>'+
+          '<option value="nearest"'+(p.roundMode==='nearest'?' selected':'')+'>ปัดใกล้สุด</option>'+
+          '<option value="up"'+(p.roundMode==='up'?' selected':'')+'>ปัดขึ้น</option>'+
+          '</select>')+
+      '</div>'+
+      '<div class="hint" style="margin:-6px 0 14px">ขั้นต่ำตัด "ทั้งก้อน" ไม่ใช่ตัดแค่เศษ — '+
+        'เช่นตั้งขั้นต่ำ 30 นาที แล้วทำ 25 นาที จะได้ 0 ไม่ใช่ 25 · ใส่ 0 ในช่องปัดเศษ = ไม่ปัด</div>'+
+
+      '<div class="f-row">'+
+        fld('หักเวลาพักระหว่าง OT (นาที)',false,otNum('o_brk',p.otBreakMinutes))+
+        fld('หักเมื่อ OT ถึง (นาที)',false,otNum('o_brkafter',p.otBreakAfterMinutes))+
+      '</div>'+
+    '</div>'+
+
+    /* ---- 3. เพดาน ---- */
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('chart')+'</div><div>'+
+      '<h3>เพดาน OT</h3><p>กรอกเป็นชั่วโมง · ใส่ 0 = ไม่จำกัด · สัปดาห์นับจันทร์–อาทิตย์</p></div></div>'+
+      '<div class="f-row three">'+
+        fld('สูงสุดต่อวัน (ชม.)',false,otNum('o_maxd',(Number(p.maxPerDayMinutes)||0)/60,0,0.5))+
+        fld('สูงสุดต่อสัปดาห์ (ชม.)',false,otNum('o_maxw',(Number(p.maxPerWeekMinutes)||0)/60,0,0.5))+
+        fld('สูงสุดต่อเดือน (ชม.)',false,otNum('o_maxm',(Number(p.maxPerMonthMinutes)||0)/60,0,0.5))+
+      '</div>'+
+      '<div class="hint">ยอดสะสมนับทั้งใบที่อนุมัติแล้วและที่ยังรออนุมัติ '+
+        'ไม่งั้นระหว่างที่ใบค้างอยู่พนักงานจะทำทะลุเพดานไปได้</div>'+
+    '</div>'+
+
+    /* ---- 4. วันหยุด ---- */
+    '<div class="card"><div class="card-head"><div class="ic">'+svgI('flag')+'</div><div>'+
+      '<h3>การทำงานวันหยุด</h3><p>วันหยุดราชการและวันหยุดประจำสัปดาห์</p></div></div>'+
+      otCk('o_hwork','อนุญาตให้เช็คอินในวันหยุดได้','ถ้าปิด พนักงานจะเช็คอินวันหยุดไม่ได้เลย',p.allowHolidayWork)+
+      otCk('o_hreq','ต้องได้รับอนุมัติก่อนจึงเช็คอินวันหยุดได้','พนักงานยื่น "ใบขอทำงานวันหยุด" ได้ทุกโหมด ยกเว้นโหมดปิดระบบ',p.holidayNeedsRequest)+
+      otCk('o_hall','วันหยุดนับเป็น OT ทั้งวัน','ถ้าปิด จะนับเฉพาะส่วนที่เกินเวลาเลิกงานเหมือนวันทำงานปกติ',p.holidayCountsAllHours)+
+    '</div>'+
+
+    /* ---- พรีวิวสด ---- */
+    '<div class="card ot-prev"><div class="card-head"><div class="ic">'+svgI('check')+'</div><div>'+
+      '<h3>ทดลองคำนวณ</h3><p>ใส่เวลาสมมติแล้วดูผลทีละขั้น — ค่าที่เห็นคือสูตรเดียวกับที่เซิร์ฟเวอร์ใช้จริง</p></div></div>'+
+      '<div class="f-row three">'+
+        fld('เวลาเข้างาน',false,'<input id="o_pin" type="time" value="08:00" onchange="otPreview()">')+
+        fld('เวลาออกงาน',false,'<input id="o_pout" type="time" value="19:20" onchange="otPreview()">')+
+        fld('ประเภทวัน',false,
+          '<select id="o_pday" onchange="otPreview()">'+
+          '<option value="workday">วันทำงานปกติ</option>'+
+          '<option value="weekend">วันหยุดประจำสัปดาห์</option>'+
+          '<option value="holiday">วันหยุดราชการ</option>'+
+          '</select>')+
+      '</div>'+
+      '<div class="f-row">'+
+        fld('เวลาเริ่มงานตามกะ',false,'<input id="o_pws" type="time" value="'+
+          esc((((BOOT.branches||[])[0]||{}).workStart)||'08:00')+'" onchange="otPreview()">')+
+        fld('เวลาเลิกงานตามกะ',false,'<input id="o_pwe" type="time" value="'+
+          esc((((BOOT.branches||[])[0]||{}).workEnd)||'17:00')+'" onchange="otPreview()">')+
+      '</div>'+
+      '<div id="otPrevOut"></div>'+
+    '</div>'+
+
+    '</div>'+   /* /otRules */
+
+    '<div class="actions"><button class="btn btn-dark" onclick="saveOtPolicyM()">บันทึกนโยบาย OT</button></div>';
+
+  otPreview();
+}
+
+function otModeChanged(v){
+  OTP.mode = v;
+  document.querySelectorAll('.ot-mode').forEach(function(el){
+    var r = el.querySelector('input'); el.classList.toggle('on', r && r.checked);
+  });
+  $('otRules').classList.toggle('hide', v === 'off');
+  otPreview();
+}
+
+/* ---- อ่านค่าจากฟอร์ม -> object เดียวกับ OtPolicy ฝั่งเซิร์ฟเวอร์ ---- */
+function otForm(){
+  var g=function(id){var e=$(id);return e?e.value:'';};
+  var ck=function(id){var e=$(id);return !!(e&&e.checked);};
+  var h2m=function(id){return Math.max(0,Math.round((parseFloat(g(id))||0)*60));};
+  return {
+    policyId: OTP.policyId,
+    name: OTP.name || 'นโยบาย OT',
+    mode: OTP.mode,
+    countAfterShift: ck('o_after'),
+    countBeforeShift: ck('o_before'),
+    graceMinutes: parseInt(g('o_grace'),10)||0,
+    beforeShiftGraceMinutes: parseInt(g('o_bgrace'),10)||0,
+    minMinutes: parseInt(g('o_min'),10)||0,
+    roundMinutes: parseInt(g('o_round'),10)||0,
+    roundMode: g('o_rmode')||'down',
+    otBreakMinutes: parseInt(g('o_brk'),10)||0,
+    otBreakAfterMinutes: parseInt(g('o_brkafter'),10)||0,
+    maxPerDayMinutes: h2m('o_maxd'),
+    maxPerWeekMinutes: h2m('o_maxw'),
+    maxPerMonthMinutes: h2m('o_maxm'),
+    allowHolidayWork: ck('o_hwork'),
+    holidayNeedsRequest: ck('o_hreq'),
+    holidayCountsAllHours: ck('o_hall')
+  };
+}
+
+/* ---- สูตรเดียวกับ computeOt() ฝั่งเซิร์ฟเวอร์ (ใช้แสดงพรีวิวเท่านั้น) ---- */
+function otMin(hhmm){var p=String(hhmm||'').split(':');
+  var h=parseInt(p[0],10),m=parseInt(p[1],10);
+  return (isFinite(h)&&isFinite(m))?h*60+m:null;}
+function otFmt(m){m=Math.max(0,Math.round(m||0));
+  return Math.floor(m/60)+' ชม. '+(m%60)+' นาที';}
+
+function otPreview(){
+  var out=$('otPrevOut'); if(!out) return;
+  var p=otForm();
+  var ci=otMin($('o_pin').value), co=otMin($('o_pout').value);
+  var ws=otMin($('o_pws').value), we=otMin($('o_pwe').value);
+  var dayType=$('o_pday').value;
+
+  var steps=[];
+  var push=function(k,v,note){steps.push([k,v,note||'']);};
+
+  if(p.mode==='off'){
+    out.innerHTML='<div class="ot-res off">ระบบ OT ปิดอยู่ — ไม่มีการนับ OT ทั้งระบบ</div>';
+    return;
+  }
+  if(ci==null||co==null||ws==null||we==null){
+    out.innerHTML='<div class="ot-res off">กรอกเวลาให้ครบก่อน</div>'; return;
+  }
+  if(co<=ci){
+    out.innerHTML='<div class="ot-res bad">เวลาออกงานต้องอยู่หลังเวลาเข้างานภายในวันเดียวกัน<br>'+
+      '<span class="sm">ระบบไม่รองรับกะข้ามคืน — กรณีนี้จะได้ OT = 0 และบันทึกเหตุผล '+
+      '<code>cross_midnight_unsupported</code></span></div>';
+    return;
+  }
+
+  var before=0, after=0;
+  if(dayType!=='workday'&&p.holidayCountsAllHours){
+    after=co-ci;
+    push('1. เวลาดิบ (วันหยุด นับทั้งวัน)',otFmt(after));
+  }else{
+    if(p.countAfterShift){var d=co-we; if(d>p.graceMinutes) after=d;
+      push('1. หลังเลิกงาน',otFmt(after),
+        d>0&&d<=p.graceMinutes?('อยู่ต่อ '+d+' นาที ยังไม่เกินผ่อนผัน '+p.graceMinutes+' นาที'):'');}
+    if(p.countBeforeShift){var d2=ws-ci; if(d2>p.beforeShiftGraceMinutes) before=d2;
+      push('1. ก่อนเข้างาน',otFmt(before),
+        d2>0&&d2<=p.beforeShiftGraceMinutes?('มาก่อน '+d2+' นาที ยังไม่เกินผ่อนผัน '+p.beforeShiftGraceMinutes+' นาที'):'');}
+  }
+  var raw=Math.max(0,before+after);
+  var m=raw;
+  push('รวมนาทีดิบ',otFmt(raw));
+
+  if(p.otBreakMinutes>0&&m>=p.otBreakAfterMinutes){
+    m=Math.max(0,m-p.otBreakMinutes);
+    push('2. หักพัก',otFmt(m),'หัก '+p.otBreakMinutes+' นาที (OT ถึง '+p.otBreakAfterMinutes+' นาที)');
+  }else push('2. หักพัก',otFmt(m),'ไม่เข้าเงื่อนไข');
+
+  if(p.roundMinutes>0){
+    var r=p.roundMinutes;
+    m = p.roundMode==='up' ? Math.ceil(m/r)*r
+      : p.roundMode==='nearest' ? Math.round(m/r)*r
+      : Math.floor(m/r)*r;
+    push('3. ปัดเศษ',otFmt(m),
+      ({down:'ปัดลง',nearest:'ปัดใกล้สุด',up:'ปัดขึ้น'})[p.roundMode]+' ทีละ '+r+' นาที');
+  }else push('3. ปัดเศษ',otFmt(m),'ไม่ปัด');
+
+  if(m<p.minMinutes){ m=0; push('4. ขั้นต่ำ',otFmt(0),'ไม่ถึง '+p.minMinutes+' นาที → ตัดทั้งก้อน'); }
+  else push('4. ขั้นต่ำ',otFmt(m),'ผ่านเกณฑ์ '+p.minMinutes+' นาที');
+
+  if(p.maxPerDayMinutes>0&&m>p.maxPerDayMinutes){
+    m=p.maxPerDayMinutes; push('5. เพดานต่อวัน',otFmt(m),'ตัดที่เพดาน');
+  }else push('5. เพดานต่อวัน',otFmt(m),p.maxPerDayMinutes>0?'ไม่เกินเพดาน':'ไม่จำกัด');
+
+  var status, stTag;
+  if(p.mode==='auto'){ status=m>0?'นับให้ทันที':'ไม่มี OT'; stTag=m>0?'ok':'off'; }
+  else if(p.mode==='request_after'){ status=m>0?'รออนุมัติ':'ไม่มี OT'; stTag=m>0?'wait':'off'; }
+  else if(p.mode==='request_before'){ status='นับได้ไม่เกินจำนวนที่อนุมัติไว้ล่วงหน้า'; stTag='wait'; }
+  else { status='ระบบไม่นับให้ — แอดมินต้องคีย์เอง'; stTag='off'; }
+
+  var gross=co-ci;
+  out.innerHTML=
+    '<div class="ot-steps">'+steps.map(function(s){
+      return '<div class="ot-step"><span class="k">'+esc(s[0])+'</span>'+
+        '<span class="v">'+esc(s[1])+'</span>'+
+        (s[2]?'<span class="n">'+esc(s[2])+'</span>':'')+'</div>';}).join('')+'</div>'+
+    '<div class="ot-res '+stTag+'">OT ที่นับได้ <b>'+otFmt(m)+'</b> ('+m+' นาที) · '+esc(status)+'</div>'+
+    '<div class="hint" style="margin-top:8px">อยู่ที่ทำงานจริง '+otFmt(gross)+
+      ' → ชั่วโมงงานปกติจะถูกหัก OT ส่วนนี้ออก เพื่อไม่ให้นับซ้ำตอนส่งต่อระบบเงินเดือน</div>';
+}
+
+function saveOtPolicyM(){
+  var p=otForm();
+  if(p.mode!=='off'){
+    if(!p.countAfterShift&&!p.countBeforeShift){
+      toast('ต้องเปิดอย่างน้อย 1 อย่าง: นับ OT หลังเลิกงาน หรือ ก่อนเข้างาน'); return;
+    }
+    if(p.maxPerDayMinutes>0&&p.minMinutes>p.maxPerDayMinutes){
+      toast('ขั้นต่ำต่อครั้งมากกว่าเพดานต่อวัน — จะไม่มีวันนับ OT ได้เลย'); return;
+    }
+  }
+  run('saveOtPolicy',p).then(function(saved){
+    OTP=saved; toast('บันทึกนโยบาย OT แล้ว');
+    return run('adminBootstrap');
+  }).then(function(b){ BOOT=b; });
+}
+</script>

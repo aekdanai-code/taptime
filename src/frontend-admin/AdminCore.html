@@ -139,7 +139,8 @@ function switchTab(tab){
   if(NAV_BUSY) return;                 // กำลังโหลดอยู่ ไม่รับคลิกซ้ำ
   var fn=({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
     leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
-    holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily})[tab];
+    holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily,
+    otpolicy:renderOtPolicy})[tab];
   if(!fn) return;
 
   CURRENT_TAB=tab;

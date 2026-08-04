@@ -5,6 +5,7 @@
 import { T, readObjects, findOne, updateByKey, appendObject } from '../db';
 import { normalizeBranch, normalizeLeaveType, normalizeHoliday } from '../helpers';
 import { weeklyOffArr } from './holidays';
+import { activePolicy } from './overtime';
 
 export async function getConfig(): Promise<Record<string, any>> {
   const cfg: Record<string, any> = {};
@@ -25,7 +26,7 @@ export async function setConfig(key: string, value: any) {
 
 /** ข้อมูลที่หน้า Admin ต้องใช้ตั้งแต่เปิดหน้า */
 export async function adminBootstrap() {
-  const [config, branches, positions, leaveTypes, holidays, weeklyOff] =
+  const [config, branches, positions, leaveTypes, holidays, weeklyOff, otPolicy] =
     await Promise.all([
       getConfig(),
       readObjects(T.BRANCHES),
@@ -33,6 +34,7 @@ export async function adminBootstrap() {
       readObjects(T.LEAVETYPES),
       readObjects(T.HOLIDAYS),
       weeklyOffArr(),
+      activePolicy(),
     ]);
 
   return {
@@ -42,5 +44,6 @@ export async function adminBootstrap() {
     leaveTypes: leaveTypes.map(normalizeLeaveType),
     holidays: holidays.map(normalizeHoliday),
     weeklyOff,
+    otPolicy,
   };
 }

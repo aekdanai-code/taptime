@@ -1,1 +1,235 @@
-{"config": [{"key": "businessName", "value": "บริษัท พร้อมเช็ค จำกัด"}, {"key": "otRateType", "value": "flat"}, {"key": "otFlatHours", "value": "1"}, {"key": "otFlatAmount", "value": "500"}, {"key": "companyName", "value": "บริษัท ปลาบิน เทรดดิ้ง จำกัด"}, {"key": "weeklyOff", "value": "0"}, {"key": "appName", "value": "TapTime"}], "branches": [{"branchId": "BR-e7625e91", "name": "สำนักงานใหญ่", "code": "0", "address": "452/16 หมู่ 2 ต.สามชุก อ.สามชุก", "province": "ปทุมธานี", "district": "ธัญบุรี", "subdistrict": "ประชาธิปัตย์", "postcode": "12130", "lat": 14.754073, "lng": 100.086218, "radius": 100.0, "workStart": "08:00", "workEnd": "17:00", "breakHours": 1.0, "lateThreshold": 15.0, "earlyCheckinMin": 30.0, "breakAfterHours": 6}], "positions": [{"posId": "PS-f4f5fbaa", "name": "พนักงานขาย", "type": "พนักงานทั่วไป", "isHead": false}], "leave_types": [{"typeId": "LT-5cc8cec1", "name": "ลาป่วย", "daysPerYear": 30.0, "expireDate": "2026-12-31", "advanceDays": null, "showQuota": true, "assignAll": true}, {"typeId": "LT-855d922f", "name": "ลากิจ", "daysPerYear": 3.0, "expireDate": "2026-12-31", "advanceDays": 2.0, "showQuota": true, "assignAll": true}, {"typeId": "LT-bb2b82a8", "name": "ลาพักร้อน", "daysPerYear": 6.0, "expireDate": "2026-12-31", "advanceDays": 2.0, "showQuota": true, "assignAll": true}], "profiles": [{"empId": "EMP-f3795df3", "name": "เอกดนัย อมตธรรม", "phone": "0836199907", "email": "aekdanai@gmail.com", "branchId": "BR-e7625e91", "position": "พนักงานขาย", "salaryType": "เงินเดือน (รายเดือน)", "salary": 10000.0, "startDate": "2026-07-26", "status": "active", "role": "employee", "gender": null, "birthDate": null, "nationalId": null, "address": null, "token": "222a168e", "photo": "data:image/jpeg;base64,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", "nickname": "เอก", "nationality": "ไทย"}, {"empId": "EMP-admin1", "name": "ผู้ดูแลระบบ", "email": "admin@example.com", "branchId": "BR-e7625e91", "role": "admin", "status": "active"}], "attendance": [{"recId": "AT-496634cf", "empId": "EMP-f3795df3", "empName": "เอกดนัย อมตธรรม", "branchId": "BR-e7625e91", "date": "2026-07-27", "checkInTime": "08:00", "checkOutTime": "13:37", "lateMinutes": 0.0, "otMinutes": 0.0, "workHours": 4.62, "dayType": "วันปกติ", "status": "ontime", "checkInLat": null, "checkInLng": null, "note": null}, {"recId": "AT-154005fb", "empId": "EMP-f3795df3", "empName": "เอกดนัย อมตธรรม", "branchId": "BR-e7625e91", "date": "2026-07-30", "checkInTime": "08:37", "checkOutTime": "17:02", "lateMinutes": 37.0, "otMinutes": 2.0, "workHours": 7.42, "dayType": "วันปกติ", "status": "late", "checkInLat": 14.75477398074244, "checkInLng": 100.08632229190546, "note": null}], "leave_requests": [{"reqId": "LV-997ee0a3", "empId": "EMP-f3795df3", "empName": "เอกดนัย อมตธรรม", "branchId": "BR-e7625e91", "leaveType": "ลาพักร้อน", "startDate": "2026-07-31", "endDate": "2026-07-31", "days": 1.0, "reason": "ไปเที่ยว", "status": "approved", "requestedAt": "2026-07-27 13:24", "decidedAt": "2026-07-27 13:25"}], "holidays": [{"holidayId": "HD-7ccf52e1", "date": "2026-07-28", "name": "วันเฉลิมพรชนมพรรษา ร.10"}, {"holidayId": "HD-b5957023", "date": "2026-07-29", "name": "วันอาฬหบูชา"}, {"holidayId": "HD-f0a8edf8", "date": "2026-08-12", "name": "วันแม่แห่งชาติ"}, {"holidayId": "HD-ea63a03a", "date": "2026-10-13", "name": "วันคล้ายวันสวรรคต ร.๙"}, {"holidayId": "HD-5e1480c9", "date": "2026-10-23", "name": "วันปิยมหาราช"}], "time_edit_requests": [], "leave_assignments": [], "webauthn_credentials": [], "checkin_audit": [], "notifications": []}
+{
+  "config": [
+    {
+      "key": "businessName",
+      "value": "บริษัท พร้อมเช็ค จำกัด"
+    },
+    {
+      "key": "otRateType",
+      "value": "flat"
+    },
+    {
+      "key": "otFlatHours",
+      "value": "1"
+    },
+    {
+      "key": "otFlatAmount",
+      "value": "500"
+    },
+    {
+      "key": "companyName",
+      "value": "บริษัท ปลาบิน เทรดดิ้ง จำกัด"
+    },
+    {
+      "key": "weeklyOff",
+      "value": "0"
+    },
+    {
+      "key": "appName",
+      "value": "TapTime"
+    }
+  ],
+  "branches": [
+    {
+      "branchId": "BR-e7625e91",
+      "name": "สำนักงานใหญ่",
+      "code": "0",
+      "address": "452/16 หมู่ 2 ต.สามชุก อ.สามชุก",
+      "province": "ปทุมธานี",
+      "district": "ธัญบุรี",
+      "subdistrict": "ประชาธิปัตย์",
+      "postcode": "12130",
+      "lat": 14.754073,
+      "lng": 100.086218,
+      "radius": 100.0,
+      "workStart": "08:00",
+      "workEnd": "17:00",
+      "breakHours": 1.0,
+      "lateThreshold": 15.0,
+      "earlyCheckinMin": 30.0,
+      "breakAfterHours": 6
+    }
+  ],
+  "positions": [
+    {
+      "posId": "PS-f4f5fbaa",
+      "name": "พนักงานขาย",
+      "type": "พนักงานทั่วไป",
+      "isHead": false
+    }
+  ],
+  "leave_types": [
+    {
+      "typeId": "LT-5cc8cec1",
+      "name": "ลาป่วย",
+      "daysPerYear": 30.0,
+      "expireDate": "2026-12-31",
+      "advanceDays": null,
+      "showQuota": true,
+      "assignAll": true
+    },
+    {
+      "typeId": "LT-855d922f",
+      "name": "ลากิจ",
+      "daysPerYear": 3.0,
+      "expireDate": "2026-12-31",
+      "advanceDays": 2.0,
+      "showQuota": true,
+      "assignAll": true
+    },
+    {
+      "typeId": "LT-bb2b82a8",
+      "name": "ลาพักร้อน",
+      "daysPerYear": 6.0,
+      "expireDate": "2026-12-31",
+      "advanceDays": 2.0,
+      "showQuota": true,
+      "assignAll": true
+    }
+  ],
+  "profiles": [
+    {
+      "empId": "EMP-f3795df3",
+      "name": "เอกดนัย อมตธรรม",
+      "phone": "0836199907",
+      "email": "aekdanai@gmail.com",
+      "branchId": "BR-e7625e91",
+      "position": "พนักงานขาย",
+      "salaryType": "เงินเดือน (รายเดือน)",
+      "salary": 10000.0,
+      "startDate": "2026-07-26",
+      "status": "active",
+      "role": "employee",
+      "gender": null,
+      "birthDate": null,
+      "nationalId": null,
+      "address": null,
+      "token": "222a168e",
+      "photo": "data:image/jpeg;base64,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",
+      "nickname": "เอก",
+      "nationality": "ไทย"
+    },
+    {
+      "empId": "EMP-admin1",
+      "name": "ผู้ดูแลระบบ",
+      "email": "admin@example.com",
+      "branchId": "BR-e7625e91",
+      "role": "admin",
+      "status": "active"
+    }
+  ],
+  "attendance": [
+    {
+      "recId": "AT-496634cf",
+      "empId": "EMP-f3795df3",
+      "empName": "เอกดนัย อมตธรรม",
+      "branchId": "BR-e7625e91",
+      "date": "2026-07-27",
+      "checkInTime": "08:00",
+      "checkOutTime": "13:37",
+      "lateMinutes": 0.0,
+      "otMinutes": 0.0,
+      "workHours": 4.62,
+      "dayType": "วันปกติ",
+      "status": "ontime",
+      "checkInLat": null,
+      "checkInLng": null,
+      "note": null
+    },
+    {
+      "recId": "AT-154005fb",
+      "empId": "EMP-f3795df3",
+      "empName": "เอกดนัย อมตธรรม",
+      "branchId": "BR-e7625e91",
+      "date": "2026-07-30",
+      "checkInTime": "08:37",
+      "checkOutTime": "17:02",
+      "lateMinutes": 37.0,
+      "otMinutes": 2.0,
+      "workHours": 7.42,
+      "dayType": "วันปกติ",
+      "status": "late",
+      "checkInLat": 14.75477398074244,
+      "checkInLng": 100.08632229190546,
+      "note": null
+    }
+  ],
+  "leave_requests": [
+    {
+      "reqId": "LV-997ee0a3",
+      "empId": "EMP-f3795df3",
+      "empName": "เอกดนัย อมตธรรม",
+      "branchId": "BR-e7625e91",
+      "leaveType": "ลาพักร้อน",
+      "startDate": "2026-07-31",
+      "endDate": "2026-07-31",
+      "days": 1.0,
+      "reason": "ไปเที่ยว",
+      "status": "approved",
+      "requestedAt": "2026-07-27 13:24",
+      "decidedAt": "2026-07-27 13:25"
+    }
+  ],
+  "holidays": [
+    {
+      "holidayId": "HD-7ccf52e1",
+      "date": "2026-07-28",
+      "name": "วันเฉลิมพรชนมพรรษา ร.10"
+    },
+    {
+      "holidayId": "HD-b5957023",
+      "date": "2026-07-29",
+      "name": "วันอาฬหบูชา"
+    },
+    {
+      "holidayId": "HD-f0a8edf8",
+      "date": "2026-08-12",
+      "name": "วันแม่แห่งชาติ"
+    },
+    {
+      "holidayId": "HD-ea63a03a",
+      "date": "2026-10-13",
+      "name": "วันคล้ายวันสวรรคต ร.๙"
+    },
+    {
+      "holidayId": "HD-5e1480c9",
+      "date": "2026-10-23",
+      "name": "วันปิยมหาราช"
+    }
+  ],
+  "time_edit_requests": [],
+  "leave_assignments": [],
+  "webauthn_credentials": [],
+  "checkin_audit": [],
+  "notifications": [],
+  "ot_policies": [
+    {
+      "policyId": "OTP-default",
+      "name": "นโยบาย OT เริ่มต้น",
+      "isActive": true,
+      "mode": "request_after",
+      "countAfterShift": true,
+      "countBeforeShift": false,
+      "graceMinutes": 15,
+      "beforeShiftGraceMinutes": 15,
+      "minMinutes": 30,
+      "roundMinutes": 30,
+      "roundMode": "down",
+      "otBreakMinutes": 0,
+      "otBreakAfterMinutes": 240,
+      "maxPerDayMinutes": 240,
+      "maxPerWeekMinutes": 0,
+      "maxPerMonthMinutes": 0,
+      "allowHolidayWork": true,
+      "holidayNeedsRequest": true,
+      "holidayCountsAllHours": true,
+      "payMode": "none",
+      "hourlyBasis": "monthly_30_8",
+      "rateWorkday": 1.5,
+      "rateWeekend": 2,
+      "rateHoliday": 3,
+      "showAmountToEmployee": false
+    }
+  ],
+  "ot_requests": []
+}

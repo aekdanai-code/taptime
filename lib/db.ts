@@ -28,6 +28,8 @@ export const T = {
   WEBAUTHN: 'webauthn_credentials',
   AUDIT: 'checkin_audit',
   NOTIFICATIONS: 'notifications',
+  OTPOLICIES: 'ot_policies',
+  OTREQUESTS: 'ot_requests',
 } as const;
 
 /* ---------- primary key ของแต่ละตาราง ---------- */
@@ -45,6 +47,8 @@ export const PK: Record<string, string> = {
   [T.WEBAUTHN]: 'credentialId',
   [T.AUDIT]: 'auditId',
   [T.NOTIFICATIONS]: 'notiId',
+  [T.OTPOLICIES]: 'policyId',
+  [T.OTREQUESTS]: 'otId',
 };
 
 let _client: SupabaseClient | null = null;
@@ -182,6 +186,15 @@ const NUMERIC_COLS = new Set([
   'daysPerYear', 'advanceDays', 'salary', 'lateMinutes', 'otMinutes',
   'workHours', 'checkInLat', 'checkInLng', 'days', 'daysOverride',
   'breakAfterHours',
+  // ---- OT (migration-005) ----
+  'otMinutesRaw', 'otBeforeMinutes', 'otAfterMinutes',
+  'graceMinutes', 'beforeShiftGraceMinutes', 'minMinutes', 'roundMinutes',
+  'otBreakMinutes', 'otBreakAfterMinutes',
+  'maxPerDayMinutes', 'maxPerWeekMinutes', 'maxPerMonthMinutes',
+  'minutesRequested', 'minutesApproved',
+  // คอลัมน์ฝั่งการจ่าย — สร้างไว้แล้วแต่เฟสนี้ยังไม่มีโค้ดอ่าน/เขียน
+  'customHourly', 'rateWorkday', 'rateWeekend', 'rateHoliday',
+  'flatPerHour', 'flatPerSession', 'otRate', 'otAmount', 'rateUsed', 'amount',
 ]);
 const DATE_COLS = new Set([
   'date', 'startDate', 'endDate', 'birthDate', 'expireDate',
