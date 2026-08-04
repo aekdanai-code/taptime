@@ -35,6 +35,7 @@ const leaves = require(path.join(LIB, 'api/leaves'));
 const timeEdits = require(path.join(LIB, 'api/timeEdits'));
 const reports = require(path.join(LIB, 'api/reports'));
 const overtime = require(path.join(LIB, 'api/overtime'));
+const otReq = require(path.join(LIB, 'api/otRequests'));
 
 let pass = 0, fail = 0;
 async function t(name, fn) {
@@ -1445,6 +1446,258 @@ async function t(name, fn) {
     for (let i = 1; i < order.length; i++)
       assert.ok(order[i] > order[i - 1], 'ลำดับขั้นในพรีวิวสลับกัน');
     assert.ok(h.includes('cross_midnight_unsupported'), 'พรีวิวไม่ได้เตือนเรื่องกะข้ามคืน');
+  });
+
+  console.log('\n── OT: ใบขอ / อนุมัติ / แจ้งเตือน ──────────');
+
+  const dbMod = require(path.join(LIB, 'db'));
+  const otRows = () => dbMod.readObjects('ot_requests');
+  const notiRows = () => dbMod.readObjects('notifications');
+  const EMP_A = 'EMP-f3795df3';
+
+  await t('OT: เช็คเอาท์โหมด request_after -> ระบบสร้างใบให้ + แจ้งแอดมิน', async () => {
+    const before = (await notiRows()).length;
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31'); // เข้า 08:37
+    const r = await attendance.writeCheckOut(att, '19:30');
+    assert.strictEqual(r.otStatus, 'pending');
+    assert.ok(r.otRequestId, 'ต้องได้ otRequestId กลับมา');
+
+    const req = (await otRows()).filter((x) => x.otId === r.otRequestId)[0];
+    assert.ok(req, 'ไม่พบใบที่ระบบสร้าง');
+    assert.strictEqual(req.source, 'system');
+    assert.strictEqual(req.status, 'pending');
+    assert.strictEqual(req.kind, 'after_shift');
+    assert.strictEqual(req.minutesRequested, r.otMinutes);
+    assert.strictEqual(req.actualEnd, '19:30');
+
+    const noti = (await notiRows()).slice(before);
+    assert.ok(noti.some((n) => n.type === 'ot_submitted'), 'ไม่ได้แจ้งแอดมิน');
+    // ต้องไม่แจ้งเตือนตัวเจ้าของ OT เอง
+    assert.ok(!noti.some((n) => n.type === 'ot_submitted' && n.empId === 'TEST-1'));
+  });
+
+  await t('OT: เช็คเอาท์ซ้ำ (เช่นอนุมัติแก้เวลา) ไม่สร้างใบซ้ำ แต่อัปเดตใบเดิม', async () => {
+    const n0 = (await otRows()).filter((x) => x.empId === 'TEST-1' && x.status === 'pending').length;
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    const r = await attendance.writeCheckOut(att, '20:30'); // ขยายเวลาออก
+    const live = (await otRows())
+      .filter((x) => x.empId === 'TEST-1' && x.date === '2026-07-31' &&
+                     x.kind === 'after_shift' && x.status === 'pending');
+    assert.strictEqual(live.length, 1, 'ต้องมีใบเดียว ไม่ใช่ ' + live.length);
+    assert.strictEqual(n0, 1);
+    assert.strictEqual(live[0].minutesRequested, r.otMinutes, 'ใบเดิมต้องถูกอัปเดตจำนวนนาที');
+    assert.strictEqual(live[0].actualEnd, '20:30');
+  });
+
+  await t('OT: แก้เวลาย้อนกลับจนไม่มี OT -> ใบที่ระบบสร้างถูกยกเลิก', async () => {
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    const r = await attendance.writeCheckOut(att, '17:05'); // ไม่เกินผ่อนผัน
+    assert.strictEqual(r.otMinutes, 0);
+    const live = (await otRows())
+      .filter((x) => x.empId === 'TEST-1' && x.date === '2026-07-31' &&
+                     (x.status === 'pending' || x.status === 'approved'));
+    assert.strictEqual(live.length, 0, 'ใบเก่าต้องถูกยกเลิก');
+    // คืนสภาพให้เทสต์ข้อถัดไป
+    const a2 = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    await attendance.writeCheckOut(a2, '19:30');
+  });
+
+  await t('OT: อนุมัติแล้ว attendance.otStatus/otMinutes อัปเดตตาม + แจ้งพนักงาน', async () => {
+    const att0 = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    const otId = att0.otRequestId;
+    const before = (await notiRows()).length;
+
+    await otReq.decideOtRequest(otId, 'approved');
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    assert.strictEqual(att.otStatus, 'approved');
+    assert.strictEqual(att.otMinutes, att0.otMinutes);
+
+    const noti = (await notiRows()).slice(before);
+    const mine = noti.filter((n) => n.type === 'ot_decided' && n.empId === 'TEST-1');
+    assert.strictEqual(mine.length, 1, 'ต้องแจ้งกลับหาเจ้าของใบ 1 ครั้ง');
+  });
+
+  await t('OT: อนุมัติใบเดิมซ้ำไม่ได้', async () => {
+    const att = await attendance.attendanceOf('TEST-1', '2026-07-31');
+    await assert.rejects(
+      () => otReq.decideOtRequest(att.otRequestId, 'approved'),
+      /ดำเนินการไปแล้ว/
+    );
+  });
+
+  await t('OT: แก้จำนวนนาทีตอนอนุมัติได้ แต่ห้ามเกินที่ยื่นขอ', async () => {
+    const att0 = await attendance.attendanceOf('TEST-2', '2026-07-31');
+    await attendance.writeCheckOut(att0, '19:20');       // 140 ดิบ -> 120 นับได้
+    const att = await attendance.attendanceOf('TEST-2', '2026-07-31');
+    const otId = att.otRequestId;
+
+    await assert.rejects(
+      () => otReq.decideOtRequest(otId, 'approved', 999),
+      /ไม่เกินที่ยื่นขอ/
+    );
+    await otReq.decideOtRequest(otId, 'approved', 60);
+    const after = await attendance.attendanceOf('TEST-2', '2026-07-31');
+    assert.strictEqual(after.otMinutes, 60, 'ต้องใช้จำนวนที่แอดมินแก้');
+    assert.strictEqual(after.otStatus, 'approved');
+  });
+
+  await t('OT: ปฏิเสธ -> otMinutes ถูกล้างเป็น 0', async () => {
+    const att0 = await attendance.attendanceOf('TEST-3', '2026-07-31')
+      || await attendance.attendanceOf('TEST-1', '2026-07-30');
+    // ใช้พนักงานที่มีแถวอยู่จริงในวันอื่นแทน ถ้า TEST-3 ไม่มี
+    const emp = await employees.listEmployees();
+    assert.ok(emp.length > 0);
+    const rec = await attendance.manualCheckIn(EMP_A, '2026-07-29', '08:00', 'วันปกติ');
+    const att = await attendance.attendanceOf(EMP_A, '2026-07-29');
+    const r = await attendance.writeCheckOut(att, '19:00');
+    assert.strictEqual(r.otStatus, 'pending');
+
+    await otReq.decideOtRequest(r.otRequestId, 'rejected', undefined, 'ไม่ได้ขออนุมัติล่วงหน้า');
+    const after = await attendance.attendanceOf(EMP_A, '2026-07-29');
+    assert.strictEqual(after.otStatus, 'rejected');
+    assert.strictEqual(after.otMinutes, 0);
+    assert.ok(rec);
+  });
+
+  await t('OT: พนักงานยื่นใบเอง (โหมด request_after)', async () => {
+    const before = (await notiRows()).length;
+    const r = await otReq.empSubmitOtRequest(EMP_A, {
+      date: '2026-07-24', plannedStart: '17:30', plannedEnd: '20:00',
+      reason: 'ปิดยอดสิ้นเดือน',
+    });
+    assert.strictEqual(r.source, 'employee');
+    assert.strictEqual(r.status, 'pending');
+    assert.strictEqual(r.minutesRequested, 150);
+    assert.strictEqual(r.kind, 'after_shift');
+    const noti = (await notiRows()).slice(before);
+    assert.ok(noti.some((n) => n.type === 'ot_submitted'));
+  });
+
+  await t('OT: ยื่นซ้ำวัน+ประเภทเดิม ถูกปฏิเสธ', async () => {
+    await assert.rejects(
+      () => otReq.empSubmitOtRequest(EMP_A, {
+        date: '2026-07-24', plannedStart: '18:00', plannedEnd: '21:00',
+      }),
+      /มีใบขอ OT ของวันที่/
+    );
+  });
+
+  await t('OT: plannedEnd <= plannedStart ถูกปฏิเสธ (ไม่รองรับกะข้ามคืน)', async () => {
+    await assert.rejects(
+      () => otReq.empSubmitOtRequest(EMP_A, {
+        date: '2026-07-23', plannedStart: '20:00', plannedEnd: '02:00',
+      }),
+      /หลังเวลาเริ่ม/
+    );
+  });
+
+  await t('OT: ยกเลิกได้เฉพาะใบที่ยัง pending และเฉพาะใบของตัวเอง', async () => {
+    const mine = (await otReq.empOtHistory(EMP_A))
+      .filter((r) => r.date === '2026-07-24')[0];
+    assert.ok(mine);
+
+    // คนอื่นยกเลิกใบนี้ไม่ได้ (ตัวตนมาจาก session — EMP-admin1 เป็นคนละคน)
+    await assert.rejects(
+      () => otReq.empCancelOtRequest('EMP-admin1', mine.otId), /ไม่พบคำขอ/);
+
+    await otReq.empCancelOtRequest(EMP_A, mine.otId);
+    const after = (await otRows()).filter((r) => r.otId === mine.otId)[0];
+    assert.strictEqual(after.status, 'cancelled');
+
+    // ยกเลิกซ้ำไม่ได้
+    await assert.rejects(
+      () => otReq.empCancelOtRequest(EMP_A, mine.otId), /ยังรออนุมัติ/);
+  });
+
+  await t('OT: ฟังก์ชันฝั่งพนักงานถูกเขียนทับ empId จาก session', () => {
+    const R = require(path.join(LIB, 'rpc'));
+    ['empSubmitOtRequest', 'empCancelOtRequest', 'empOtHistory'].forEach((fn) => {
+      assert.ok(R.EMPLOYEE_FNS.has(fn), fn + ' ต้องอยู่ใน EMPLOYEE_FNS');
+      const out = R.applyIdentity(fn, ['EMP-เหยื่อ', { date: '2026-01-01' }],
+        { empId: 'EMP-ฉัน' });
+      assert.strictEqual(out[0], 'EMP-ฉัน', fn + ' ยังยื่นแทนคนอื่นได้');
+    });
+    ['listOtRequests', 'decideOtRequest', 'adminCreateOt', 'otSummary']
+      .forEach((fn) => {
+        assert.ok(R.ADMIN_FNS.has(fn), fn + ' ต้องเป็นสิทธิ์แอดมิน');
+        assert.ok(!R.EMPLOYEE_FNS.has(fn), fn + ' ต้องไม่อยู่ในกลุ่มพนักงาน');
+      });
+  });
+
+  await t('OT: adminCreateOt คีย์ให้ได้ + ขึ้น approved ทันที', async () => {
+    const r = await otReq.adminCreateOt({
+      empId: EMP_A, date: '2026-07-22', start: '17:30', end: '19:30',
+      reason: 'ลืมเช็คเอาท์',
+    });
+    assert.strictEqual(r.source, 'admin');
+    assert.strictEqual(r.status, 'approved');
+    assert.strictEqual(r.minutesApproved, 120);
+    // คีย์ซ้ำวันเดิมไม่ได้
+    await assert.rejects(
+      () => otReq.adminCreateOt({
+        empId: EMP_A, date: '2026-07-22', start: '18:00', end: '19:00' }),
+      /มีใบ OT ของวันที่/
+    );
+  });
+
+  await t('OT: listOtRequests กรองตามสถานะ/ช่วงวัน/ชื่อได้', async () => {
+    const all = await otReq.listOtRequests({});
+    assert.ok(all.length >= 3);
+    const appr = await otReq.listOtRequests({ status: 'approved' });
+    assert.ok(appr.every((r) => r.status === 'approved'));
+    const ranged = await otReq.listOtRequests({ start: '2026-07-22', end: '2026-07-22' });
+    assert.ok(ranged.every((r) => r.date === '2026-07-22'));
+    const byEmp = await otReq.listOtRequests({ empId: EMP_A });
+    assert.ok(byEmp.every((r) => r.empId === EMP_A));
+    // เรียงใหม่สุดขึ้นก่อน
+    for (let i = 1; i < all.length; i++)
+      assert.ok(all[i - 1].date >= all[i].date, 'ไม่ได้เรียงตามวันที่');
+  });
+
+  await t('OT: otSummary นับเฉพาะ approved ไม่ปนกับ pending', async () => {
+    // เตรียมแถว pending 1 แถว
+    await attendance.manualCheckIn('TEST-3', '2026-07-21', '08:00', 'วันปกติ')
+      .catch(() => attendance.manualCheckIn(EMP_A, '2026-07-21', '08:00', 'วันปกติ'));
+    const who = (await attendance.attendanceOf('TEST-3', '2026-07-21')) ? 'TEST-3' : EMP_A;
+    const a = await attendance.attendanceOf(who, '2026-07-21');
+    await attendance.writeCheckOut(a, '19:00');   // pending
+
+    const s = await otReq.otSummary({ start: '2026-07-01', end: '2026-07-31' });
+    assert.ok(s.totalApproved > 0, 'ต้องมียอดอนุมัติ');
+    assert.ok(s.totalPending > 0, 'ต้องมียอดรออนุมัติ');
+    // ทุกแถวต้องแยกสองช่อง ไม่รวมกัน
+    s.rows.forEach((r) => {
+      const byDay = r.workdayMinutes + r.weekendMinutes + r.holidayMinutes;
+      assert.strictEqual(byDay, r.approvedMinutes,
+        'ยอดแยกตามประเภทวันต้องเท่ากับยอดอนุมัติ');
+    });
+    const tot = s.rows.reduce((n, r) => n + r.approvedMinutes, 0);
+    assert.strictEqual(tot, s.totalApproved);
+  });
+
+  await t('OT: แจ้งเตือน ot_submitted/ot_decided มีแท็บปลายทาง', async () => {
+    const rows = await notiRows();
+    const sub = rows.filter((n) => n.type === 'ot_submitted')[0];
+    const dec = rows.filter((n) => n.type === 'ot_decided')[0];
+    assert.strictEqual(sub.tab, 'otapprove');
+    assert.strictEqual(dec.tab, 'history');
+  });
+
+  await t('OT: หน้าอนุมัติ OT มีตัวกรอง + เลือกหลายรายการ + แก้จำนวนนาที', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['renderOtApprove', 'listOtRequests', 'decideOtRequests', 'อนุมัติที่เลือก',
+     'otPickAll', 'ot-min', 'data-tab="otapprove"', 'otapprove:renderOtApprove']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    // ตัวกรองครบ 4 อย่าง: สถานะ / ช่วงวัน / สาขา / ชื่อ
+    ['otf_s', 'otf_e', 'otf_b', 'otf_n'].forEach((k) =>
+      assert.ok(h.includes(k), 'ขาดตัวกรอง ' + k));
+  });
+
+  await t('OT: mode = off ซ่อนเมนูอนุมัติ OT ฝั่งแอดมิน', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(h.includes('function applyOtVisibility'), 'ไม่มีตัวคุมการซ่อน');
+    assert.ok(/applyOtVisibility[\s\S]{0,400}otapprove/.test(h), 'ไม่ได้ซ่อนเมนูอนุมัติ');
+    assert.ok(/mode === 'off'/.test(h), 'ไม่ได้เช็คโหมด off');
   });
 
   console.log('\n── ปุ่มสไลด์เช็คอิน/เอาท์ ──────────────────');

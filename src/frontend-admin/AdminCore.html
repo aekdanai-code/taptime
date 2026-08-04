@@ -109,12 +109,25 @@ window.addEventListener('load',function(){
     if(b.config&&b.config.companyName) $('bizName').textContent=b.config.companyName;
     document.querySelectorAll('.nav-item').forEach(function(n){
       n.addEventListener('click',function(){switchTab(n.dataset.tab);});});
+    applyOtVisibility();
     switchTab('dashboard');
   }).catch(function(e){
     $('content').innerHTML='<div class="card"><b>โหลดข้อมูลไม่สำเร็จ</b><br>'+
       esc(e.message||e)+'<br><br>ตรวจสอบว่ารันฟังก์ชัน <code>setupSheets()</code> แล้วหรือยัง</div>';
   });
 });
+
+/* โหมด OT = off -> ซ่อนทุกอย่างที่เกี่ยวกับ OT
+ * (เมนู "ตั้งค่า OT" ยังอยู่ ไม่งั้นจะเปิดระบบกลับมาไม่ได้)
+ */
+function applyOtVisibility(){
+  var off = !BOOT.otPolicy || BOOT.otPolicy.mode === 'off';
+  document.querySelectorAll('[data-tab="otapprove"]').forEach(function(n){
+    n.classList.toggle('hide', off);
+  });
+  if(off && CURRENT_TAB === 'otapprove') switchTab('dashboard');
+}
+function otEnabled(){ return !!(BOOT.otPolicy && BOOT.otPolicy.mode !== 'off'); }
 
 /* ---- router ----
  * กันกดเมนูรัว ๆ ระหว่างที่ยังโหลดไม่เสร็จ
@@ -140,7 +153,7 @@ function switchTab(tab){
   var fn=({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
     leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
     holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily,
-    otpolicy:renderOtPolicy})[tab];
+    otpolicy:renderOtPolicy,otapprove:renderOtApprove})[tab];
   if(!fn) return;
 
   CURRENT_TAB=tab;

@@ -274,6 +274,10 @@ function saveOtPolicyM(){
   run('saveOtPolicy',p).then(function(saved){
     OTP=saved; toast('บันทึกนโยบาย OT แล้ว');
     return run('adminBootstrap');
-  }).then(function(b){ BOOT=b; });
+  }).then(function(b){
+    BOOT=b;
+    // เปลี่ยนโหมดแล้วเมนูต้องซ่อน/โผล่ทันที ไม่ต้อง login ใหม่
+    if(typeof applyOtVisibility==='function') applyOtVisibility();
+  });
 }
 </script>

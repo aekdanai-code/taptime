@@ -16,6 +16,8 @@ export type NotiType =
   | 'leave_decided'
   | 'timeedit_submitted'
   | 'timeedit_decided'
+  | 'ot_submitted'
+  | 'ot_decided'
   | 'absent';
 
 /** แท็บปลายทางเมื่อกดจากรายการแจ้งเตือน */
@@ -24,6 +26,8 @@ const TAB_OF: Record<NotiType, string> = {
   leave_decided: 'leave',
   timeedit_submitted: 'timeedits',
   timeedit_decided: 'history',
+  ot_submitted: 'otapprove',
+  ot_decided: 'history',
   absent: 'daily',
 };
 

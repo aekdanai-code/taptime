@@ -186,6 +186,34 @@ export async function writeCheckOut(att: any, time: string) {
     workHours = Math.round(Math.max(0, net - ot.countable / 60) * 100) / 100;
   }
 
+  /* โหมด request_after — ต้องมีใบให้แอดมินกดอนุมัติ
+   *
+   * เรียกทุกครั้งแม้ OT จะเป็น 0 เพราะถ้าแอดมินอนุมัติคำขอแก้เวลาให้ย้อนกลับ
+   * จนไม่มี OT แล้ว ใบที่ระบบเคยสร้างต้องถูกยกเลิกตามไปด้วย
+   * ไม่งั้นจะมีใบค้างรออนุมัติทั้งที่ไม่มี OT จริง
+   *
+   * import แบบ dynamic เพื่อตัดวงจร import (otRequests เรียก attendanceOf กลับมา)
+   */
+  let otRequestId: string | null = null;
+  if (policy.mode === 'request_after' && inMin != null) {
+    try {
+      const { syncSystemOtRequest } = await import('./otRequests');
+      otRequestId = await syncSystemOtRequest({
+        emp: { empId: att.empId, name: att.empName, branchId: att.branchId },
+        date: dateStr,
+        kind: ot.before > 0 && ot.after === 0 ? 'before_shift' : 'after_shift',
+        dayType,
+        minutes: ot.countable,
+        actualStart: att.checkInTime || '',
+        actualEnd: time,
+        policyId: policy.policyId,
+      });
+    } catch (e) {
+      // สร้างใบไม่สำเร็จต้องไม่ทำให้เช็คเอาท์ล้มเหลว — แถวลงเวลายังขึ้น pending อยู่ดี
+      console.error('[syncSystemOtRequest]', (e as any)?.message || e);
+    }
+  }
+
   const patch: any = {
     checkOutTime: time,
     otMinutes: ot.countable,
@@ -195,6 +223,7 @@ export async function writeCheckOut(att: any, time: string) {
     otDayType: dayType,
     otStatus: ot.status,
     otPolicyId: policy.policyId,
+    otRequestId,
     otNote: ot.note || null,
     workHours,
   };
@@ -208,6 +237,7 @@ export async function writeCheckOut(att: any, time: string) {
     otMinutesRaw: ot.raw,
     otStatus: ot.status,
     otDayType: dayType,
+    otRequestId,
     otNote: ot.note || '',
     workHours: workHours == null ? '' : workHours,
   };

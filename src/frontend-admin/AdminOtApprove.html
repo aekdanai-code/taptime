@@ -1,0 +1,154 @@
+<script>
+/* ============ เมนู: อนุมัติ OT ============
+ *
+ * ใบขอ OT มี 3 ที่มา
+ *   system    ระบบสร้างให้ตอนเช็คเอาท์ (โหมด "นับก่อน แล้วค่อยอนุมัติ")
+ *   employee  พนักงานยื่นเอง
+ *   admin     แอดมินคีย์ให้
+ */
+
+var OTF = { status:'pending', start:'', end:'', branchId:'', name:'' };
+var OT_SEL = {};   // otId -> true (เลือกไว้อนุมัติพร้อมกัน)
+
+function renderOtApprove(){
+  if(!OTF.start){
+    var d=new Date(); d.setDate(d.getDate()-30);
+    OTF.start=d.toISOString().slice(0,10);
+    OTF.end=todayStr();
+  }
+  loadOtRequests();
+}
+
+function otMinFmt(m){m=Math.max(0,Math.round(Number(m)||0));
+  return Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' ชม.';}
+function otKindTh(k){return ({after_shift:'หลังเลิกงาน',before_shift:'ก่อนเข้างาน',
+  holiday_work:'ทำงานวันหยุด'})[k]||k||'-';}
+function otDayTh(d){return ({workday:'วันทำงาน',weekend:'วันหยุดสัปดาห์',
+  holiday:'วันหยุดราชการ'})[d]||d||'-';}
+function otSrcTh(s){return ({system:'ระบบบันทึกให้',employee:'พนักงานยื่นเอง',
+  admin:'แอดมินคีย์ให้'})[s]||s||'-';}
+function otStatusTag(s){return ({
+  pending:'<span class="tag t-orange">รออนุมัติ</span>',
+  approved:'<span class="tag t-green">อนุมัติแล้ว</span>',
+  rejected:'<span class="tag t-red">ปฏิเสธ</span>',
+  cancelled:'<span class="tag t-gray">ยกเลิกแล้ว</span>'})[s]||esc(s);}
+
+function otChip(v,label){return '<div class="chip'+(OTF.status===v?' active':'')+
+  '" onclick="OTF.status=\''+v+'\';OT_SEL={};loadOtRequests()">'+label+'</div>';}
+
+function loadOtRequests(){
+  $('content').innerHTML=loadBox('กำลังโหลดคำขอ OT...');
+  run('listOtRequests',OTF).then(function(list){
+    var pending = OTF.status==='pending';
+    var rows=list.map(function(r){
+      var asked=Number(r.minutesRequested)||0;
+      var shown=r.minutesApproved==null?asked:Number(r.minutesApproved);
+      return '<tr>'+
+        (pending?'<td><input type="checkbox" class="ot-pick" value="'+esc(r.otId)+'"'+
+          (OT_SEL[r.otId]?' checked':'')+' onchange="otPick(this)"></td>':'')+
+        '<td><b>'+esc(r.empName||r.empId)+'</b><div class="sub">'+
+          esc(branchName(r.branchId))+'</div></td>'+
+        '<td>'+esc(r.date)+'<div class="sub">'+esc(otDayTh(r.dayType))+'</div></td>'+
+        '<td>'+esc(otKindTh(r.kind))+'<div class="sub">'+esc(otSrcTh(r.source))+'</div></td>'+
+        '<td>'+esc(r.actualStart||r.plannedStart||'-')+' – '+
+          esc(r.actualEnd||r.plannedEnd||'-')+'</td>'+
+        '<td>'+otMinFmt(asked)+'<div class="sub">'+asked+' นาที</div></td>'+
+        '<td>'+(pending
+          ? '<input type="number" class="ot-min" id="otm_'+esc(r.otId)+'" min="0" max="'+asked+
+            '" step="1" value="'+asked+'">'
+          : '<b>'+otMinFmt(shown)+'</b>')+'</td>'+
+        '<td>'+esc(r.reason||r.adminNote||'-')+'</td>'+
+        '<td>'+otStatusTag(r.status)+'</td>'+
+        '<td>'+(r.status==='pending'
+          ? '<span class="btn btn-sm btn-green" onclick="otDecide(\''+esc(r.otId)+'\',\'approved\')">✓ อนุมัติ</span> '+
+            '<span class="btn btn-sm btn-red" onclick="otDecide(\''+esc(r.otId)+'\',\'rejected\')">✕ ปฏิเสธ</span>'
+          : '<span class="tag t-gray">ดำเนินการแล้ว</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+
+    var cols = pending?10:9;
+    $('content').innerHTML=
+      '<div class="page-title">อนุมัติ OT</div>'+
+      '<div class="page-sub">ตรวจสอบและอนุมัติชั่วโมงล่วงเวลา · '+
+        'แก้จำนวนนาทีก่อนกดอนุมัติได้ แต่ห้ามเกินที่ยื่นขอ</div>'+
+      '<div class="card">'+
+        '<div class="chips">'+
+          otChip('pending','รออนุมัติ')+otChip('approved','อนุมัติแล้ว')+
+          otChip('rejected','ปฏิเสธ')+otChip('cancelled','ยกเลิก')+otChip('','ทั้งหมด')+
+        '</div>'+
+        '<div class="assign-tools">'+
+          '<input type="date" id="otf_s" value="'+esc(OTF.start)+'" onchange="otFilter()">'+
+          '<span>ถึง</span>'+
+          '<input type="date" id="otf_e" value="'+esc(OTF.end)+'" onchange="otFilter()">'+
+          '<select id="otf_b" onchange="otFilter()">'+
+            '<option value="">ทุกสาขา</option>'+
+            (BOOT.branches||[]).map(function(b){return '<option value="'+esc(b.branchId)+'"'+
+              (OTF.branchId===b.branchId?' selected':'')+'>'+esc(b.name)+'</option>';}).join('')+
+          '</select>'+
+          '<input type="text" id="otf_n" placeholder="ค้นหาชื่อพนักงาน" value="'+
+            esc(OTF.name)+'" oninput="otFilterDebounced()">'+
+        '</div>'+
+        (pending&&list.length
+          ? '<div class="assign-tools"><span class="btn btn-ghost btn-sm" onclick="otPickAll(true)">เลือกทั้งหมด</span>'+
+            '<span class="btn btn-ghost btn-sm" onclick="otPickAll(false)">ล้างที่เลือก</span>'+
+            '<span class="btn btn-green btn-sm" onclick="otBulk(\'approved\')">✓ อนุมัติที่เลือก</span>'+
+            '<span class="btn btn-red btn-sm" onclick="otBulk(\'rejected\')">✕ ปฏิเสธที่เลือก</span>'+
+            '<span class="sub" id="otSelInfo"></span></div>'
+          : '')+
+        '<div style="overflow:auto"><table><thead><tr>'+
+          (pending?'<th style="width:34px"></th>':'')+
+          '<th>พนักงาน</th><th>วันที่</th><th>ประเภท</th><th>เวลา</th>'+
+          '<th>ยื่นขอ</th><th>อนุมัติ</th><th>เหตุผล</th><th>สถานะ</th><th>จัดการ</th>'+
+        '</tr></thead><tbody>'+
+        (rows||'<tr><td colspan="'+cols+'" class="empty">ไม่มีรายการ</td></tr>')+
+        '</tbody></table></div>'+
+      '</div>';
+    otSelInfo();
+  });
+}
+
+var _otFT=null;
+function otFilterDebounced(){clearTimeout(_otFT);_otFT=setTimeout(otFilter,350);}
+function otFilter(){
+  OTF.start=$('otf_s')?$('otf_s').value:OTF.start;
+  OTF.end=$('otf_e')?$('otf_e').value:OTF.end;
+  OTF.branchId=$('otf_b')?$('otf_b').value:'';
+  OTF.name=$('otf_n')?$('otf_n').value.trim():'';
+  OT_SEL={};
+  loadOtRequests();
+}
+
+function otPick(el){ if(el.checked) OT_SEL[el.value]=true; else delete OT_SEL[el.value];
+  otSelInfo(); }
+function otPickAll(on){
+  document.querySelectorAll('.ot-pick').forEach(function(c){
+    c.checked=on; if(on)OT_SEL[c.value]=true; else delete OT_SEL[c.value];});
+  otSelInfo();
+}
+function otSelInfo(){
+  var el=$('otSelInfo'); if(!el)return;
+  var n=Object.keys(OT_SEL).length;
+  el.textContent = n?('เลือกไว้ '+n+' รายการ'):'';
+}
+
+function otDecide(otId,decision){
+  var inp=$('otm_'+otId);
+  var minutes = inp ? inp.value : undefined;
+  run('decideOtRequest',otId,decision,minutes,'').then(function(){
+    toast(decision==='approved'?'อนุมัติ OT แล้ว':'ปฏิเสธแล้ว');
+    delete OT_SEL[otId];
+    loadOtRequests();
+  });
+}
+
+function otBulk(decision){
+  var ids=Object.keys(OT_SEL);
+  if(!ids.length){ toast('ยังไม่ได้เลือกรายการ'); return; }
+  run('decideOtRequests',ids,decision,'').then(function(r){
+    toast((decision==='approved'?'อนุมัติ ':'ปฏิเสธ ')+r.ok+' รายการ'+
+      (r.failed?(' · ไม่สำเร็จ '+r.failed):''));
+    OT_SEL={};
+    loadOtRequests();
+  });
+}
+</script>

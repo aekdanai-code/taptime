@@ -35,6 +35,10 @@ import {
   listNotifications, unreadCount, markNotificationsRead,
 } from './api/notifications';
 import { getOtPolicy, saveOtPolicy } from './api/overtime';
+import {
+  listOtRequests, decideOtRequest, decideOtRequests, adminCreateOt, otSummary,
+  empSubmitOtRequest, empCancelOtRequest, empOtHistory,
+} from './api/otRequests';
 
 type Fn = (...args: any[]) => any;
 
@@ -55,6 +59,8 @@ export const ADMIN_FNS = new Set([
   'monthlyReport', 'dailyReport', 'exportMonthlyReportXlsx',
   'getConfig', 'setConfig',
   'getOtPolicy', 'saveOtPolicy',
+  'listOtRequests', 'decideOtRequest', 'decideOtRequests', 'adminCreateOt',
+  'otSummary',
 ]);
 
 /**
@@ -64,6 +70,7 @@ export const ADMIN_FNS = new Set([
 export const EMPLOYEE_FNS = new Set([
   'employeeContext', 'empCheckIn', 'empCheckOut',
   'empSubmitLeave', 'empSubmitTimeEdit', 'empUpdatePhoto',
+  'empSubmitOtRequest', 'empCancelOtRequest', 'empOtHistory',
   // แจ้งเตือน — ใช้ได้ทั้งแอดมินและพนักงาน ตัวตนมาจาก session เสมอ
   'listNotifications', 'unreadCount', 'markNotificationsRead',
 ]);
@@ -122,4 +129,6 @@ export const REGISTRY: Record<string, Fn> = {
   monthlyReport, dailyReport, exportMonthlyReportXlsx,
   /* OT */
   getOtPolicy, saveOtPolicy,
+  listOtRequests, decideOtRequest, decideOtRequests, adminCreateOt, otSummary,
+  empSubmitOtRequest, empCancelOtRequest, empOtHistory,
 };

@@ -171,18 +171,19 @@
 
   /** ข้อความระหว่างรอ ตามชนิดของงาน */
   function busyText(fn) {
-    if (/^save|^setConfig|^setWebauthnExempt/.test(fn)) return 'กำลังบันทึก...';
+    if (/^save|^setConfig|^setWebauthnExempt|^adminCreate/.test(fn)) return 'กำลังบันทึก...';
     if (/^delete|^del|^revoke/.test(fn))                return 'กำลังลบ...';
     if (/^decide/.test(fn))                             return 'กำลังดำเนินการ...';
     if (/^invite|^setEmployeePassword/.test(fn))        return 'กำลังส่ง...';
     if (/^export/.test(fn))                             return 'กำลังสร้างไฟล์...';
     if (/^empSubmit/.test(fn))                          return 'กำลังส่งคำขอ...';
+    if (/^empCancel/.test(fn))                          return 'กำลังยกเลิก...';
     return 'กำลังทำงาน...';
   }
 
   /** ฟังก์ชันที่แค่ "อ่าน" ข้อมูล ไม่ต้องล็อกปุ่ม */
   function isReadOnly(fn) {
-    return /^(list|get|adminBootstrap|adminDashboard|employeeContext|monthlyReport|dailyReport|unreadCount|leaveAssignSummary)/.test(fn);
+    return /^(list|get|adminBootstrap|adminDashboard|employeeContext|monthlyReport|dailyReport|unreadCount|leaveAssignSummary|otSummary|empOtHistory)/.test(fn);
   }
 
   function lockBtn(fn) {
