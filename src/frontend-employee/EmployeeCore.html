@@ -392,6 +392,22 @@ function handleFail(r,kind){
   else if(r.reason==='already_in'){ showAlert('เช็คอินซ้ำ','คุณได้เช็คอินไปแล้ววันนี้','info', loadCtx); }
   else if(r.reason==='already_out'){ showAlert('เช็คเอาท์ซ้ำ','คุณได้เช็คเอาท์ไปแล้ววันนี้','info', loadCtx); }
   else if(r.reason==='no_checkin'){ showAlert('ยังไม่ได้เช็คอิน','กรุณาเช็คอินก่อนเช็คเอาท์','info', loadCtx); }
+  else if(r.reason==='low_accuracy'){
+    showAlert('ตำแหน่งไม่แม่นยำพอ',
+      'ระบบระบุตำแหน่งได้คลาดเคลื่อนถึง '+(r.accuracy||'')+' เมตร ซึ่งเชื่อถือไม่ได้\n'+
+      'กรุณาเปิด GPS แบบความแม่นยำสูง ออกไปที่โล่ง รอสักครู่แล้วลองใหม่',
+      'error', renderHome);
+  }
+  else if(r.reason==='no_location'){
+    showAlert('ไม่ได้รับตำแหน่ง',
+      'ระบบไม่ได้รับพิกัดจากเครื่องของคุณ\n'+
+      'กรุณาอนุญาตการเข้าถึงตำแหน่งในตั้งค่าของเบราว์เซอร์ แล้วเปิดหน้านี้ใหม่',
+      'error', renderHome);
+  }
+  else if(r.reason==='branch_no_location'){
+    showAlert('สาขายังไม่ได้ตั้งพิกัด',
+      'ผู้ดูแลระบบยังไม่ได้ปักหมุดตำแหน่งของสาขา กรุณาแจ้งหัวหน้างาน','error', renderHome);
+  }
   else { showAlert('ไม่สำเร็จ','กรุณาลองใหม่อีกครั้ง','error', renderHome); }
 }
 

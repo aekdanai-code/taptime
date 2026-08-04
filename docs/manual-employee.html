@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TapTime — คู่มือพนักงาน V1.3</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f2f3f5; --card:#fff; --ink:#1a1d21; --muted:#71767f; --line:#e4e7ea;
+  --blue:#3b6ef5; --blue-soft:#eaf0ff; --green:#12a150; --green2:#0e8a44;
+  --green-soft:#e7f7ee; --orange:#e8820c; --orange-soft:#fdf3e5;
+  --red:#e03b3b; --red-soft:#fdeaea;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Noto Sans Thai",system-ui,-apple-system,sans-serif;background:var(--bg);
+  color:var(--ink);font-size:17px;line-height:1.8;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 90px}
+
+.hero{background:linear-gradient(135deg,#16b357,#0e8a44);color:#fff;border-radius:0 0 26px 26px;
+  padding:38px 26px 32px;margin:0 -20px 30px;text-align:center}
+.hero .lg{width:54px;height:54px;border-radius:15px;background:rgba(255,255,255,.2);
+  display:grid;place-items:center;font-size:24px;font-weight:800;margin:0 auto 12px}
+.hero h1{font-size:29px;font-weight:800;line-height:1.3}
+.hero p{opacity:.92;font-size:16px;margin-top:5px}
+
+/* สารบัญ */
+.toc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 22px;
+  margin-bottom:28px}
+.toc h4{font-size:15px;color:var(--muted);font-weight:800;margin-bottom:8px}
+.toc ol{margin-left:22px}
+.toc li{margin:5px 0}
+.toc a{color:var(--ink);text-decoration:none;font-weight:600}
+.toc a:hover{color:var(--blue)}
+
+h2{font-size:24px;font-weight:800;margin:44px 0 12px;padding-top:16px;
+  border-top:2px solid var(--line);scroll-margin-top:16px}
+h3{font-size:19px;font-weight:800;margin:26px 0 8px;scroll-margin-top:16px}
+p{margin:10px 0}
+ul,ol{margin:10px 0 10px 24px}
+li{margin:6px 0}
+b,strong{font-weight:800}
+code{background:#eceef1;padding:1.5px 7px;border-radius:5px;font-size:15px}
+hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:20px 24px;margin:18px 0}
+.card h3:first-child,.card h4:first-child{margin-top:0}
+
+table{width:100%;border-collapse:collapse;margin:16px 0;background:#fff;
+  border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:16px}
+th{text-align:left;background:#f7f8fa;font-weight:800;padding:11px 14px;
+  border-bottom:1px solid var(--line);font-size:15px}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+
+.note,.warn,.tip,.danger{border-radius:14px;padding:16px 20px;margin:18px 0;
+  border-left:4px solid;font-size:16px}
+.note{background:var(--blue-soft);border-color:var(--blue)}
+.tip{background:var(--green-soft);border-color:var(--green)}
+.warn{background:var(--orange-soft);border-color:var(--orange)}
+.danger{background:var(--red-soft);border-color:var(--red)}
+.note b:first-child,.warn b:first-child,.tip b:first-child,.danger b:first-child{
+  display:block;margin-bottom:3px}
+
+.steps{counter-reset:s;list-style:none;margin-left:0}
+.steps>li{counter-increment:s;position:relative;padding-left:46px;margin:16px 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:31px;height:31px;
+  border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;
+  font-size:15px;font-weight:800}
+
+/* ตัวอย่างปุ่มสไลด์ */
+.demo{margin:20px 0}
+.slider{position:relative;height:74px;border-radius:999px;overflow:hidden;display:flex;
+  align-items:center;justify-content:center;
+  box-shadow:0 8px 20px -8px rgba(18,161,80,.5),inset 0 2px 0 rgba(255,255,255,.28)}
+.slider.green{background:linear-gradient(135deg,#18c163,#0c8f47)}
+.slider.orange{background:linear-gradient(135deg,#ffa42b,#e0700a);
+  box-shadow:0 8px 20px -8px rgba(232,130,12,.5),inset 0 2px 0 rgba(255,255,255,.28)}
+.slider.gray{background:linear-gradient(135deg,#dfe3e8,#ced4db);box-shadow:none;opacity:.9}
+.slider .tx{position:relative;z-index:2;font-weight:800;font-size:19px;color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,.2);padding-left:62px;padding-right:40px;
+  animation:bl 1.5s ease-in-out infinite}
+.slider.gray .tx{animation:none;color:#fff;text-shadow:none;padding-right:0}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.55}}
+.slider .ar{position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;gap:3px;z-index:2}
+.slider .ar i{display:block;width:9px;height:9px;border-right:3px solid #fff;
+  border-top:3px solid #fff;transform:rotate(45deg);border-radius:2px;opacity:.3;
+  animation:cv 1.2s linear infinite}
+.slider .ar i:nth-child(2){animation-delay:.16s}
+.slider .ar i:nth-child(3){animation-delay:.32s}
+@keyframes cv{0%,100%{opacity:.22}45%{opacity:1}}
+.slider .kn{position:absolute;z-index:3;left:6px;top:6px;width:62px;height:62px;border-radius:50%;
+  background:radial-gradient(120% 120% at 30% 25%,#fff,#eef1f5);display:grid;place-items:center;
+  box-shadow:0 6px 14px rgba(0,0,0,.26);font-size:24px}
+.slider.green .kn{color:#0b7a3c}
+.slider.orange .kn{color:#b85f06}
+.slider.gray .kn{color:#a2a9b2;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.slider .kn::before{content:'';position:absolute;inset:-4px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.85);animation:rg 1.5s ease-out infinite}
+.slider.gray .kn::before{display:none}
+@keyframes rg{0%{transform:scale(1);opacity:.85}70%,100%{transform:scale(1.35);opacity:0}}
+.hint{text-align:center;font-size:15px;color:var(--muted);margin-top:9px}
+
+.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:14px;font-weight:800}
+.b-wait{background:var(--orange-soft);color:var(--orange)}
+.b-ok{background:var(--green-soft);color:var(--green2)}
+.b-no{background:var(--red-soft);color:var(--red)}
+.b-gray{background:#eceef1;color:#5a6069}
+
+.faq{border:1px solid var(--line);border-radius:14px;background:#fff;margin:12px 0;overflow:hidden}
+.faq summary{padding:15px 20px;font-weight:800;cursor:pointer;list-style:none;
+  display:flex;gap:11px;align-items:flex-start;font-size:16.5px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:'?';flex:0 0 auto;width:23px;height:23px;border-radius:50%;
+  background:var(--green-soft);color:var(--green2);display:grid;place-items:center;
+  font-size:14px;font-weight:800;margin-top:4px}
+.faq[open] summary{border-bottom:1px solid var(--line)}
+.faq .body{padding:14px 20px 18px 54px}
+.faq .body>*:first-child{margin-top:0}
+
+.printbtn{display:block;width:100%;margin:34px 0 0;padding:13px;border:1px solid var(--line);
+  background:#fff;border-radius:12px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer}
+
+@media print{
+  body{background:#fff;font-size:11.5pt}
+  .hero{background:#0e8a44!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;
+    border-radius:0;margin:0 0 20px}
+  .printbtn,.toc{display:none}
+  .wrap{max-width:none;padding:0}
+  h2{page-break-after:avoid;break-after:avoid}
+  .card,table,.note,.warn,.tip,.danger,.demo,.faq{page-break-inside:avoid;break-inside:avoid}
+  .faq .body{display:block!important}
+  .slider .tx,.slider .ar i,.slider .kn::before{animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <div class="lg">T</div>
+  <h1>คู่มือการใช้งาน TapTime</h1>
+  <p>สำหรับพนักงาน · เวอร์ชัน 1.3</p>
+</div>
+
+<div class="toc">
+<h4>ในคู่มือนี้มีอะไรบ้าง</h4>
+<ol>
+<li><a href="#first">เริ่มใช้งานครั้งแรก</a></li>
+<li><a href="#checkin">เช็คอิน–เช็คเอาท์</a></li>
+<li><a href="#cant">เช็คอินไม่ได้ ทำยังไง</a></li>
+<li><a href="#hours">เวลาทำงานและ OT</a></li>
+<li><a href="#request">ยื่นคำขอ (ลา · OT · แก้เวลา)</a></li>
+<li><a href="#other">ประวัติ วันหยุด รูปโปรไฟล์ แจ้งเตือน</a></li>
+<li><a href="#faq">คำถามที่พบบ่อย</a></li>
+</ol>
+</div>
+
+<div class="tip">
+<b>อ่านแค่ 2 หัวข้อก็ใช้งานได้แล้ว</b>
+ถ้ารีบ ให้อ่านหัวข้อ 1 (เริ่มใช้งานครั้งแรก) และ 2 (เช็คอิน–เช็คเอาท์)
+ที่เหลือค่อยกลับมาเปิดตอนต้องใช้
+</div>
+
+<h2 id="first">1. เริ่มใช้งานครั้งแรก</h2>
+
+<h3>ตั้งรหัสผ่านของคุณ</h3>
+
+<ol class="steps">
+<li>เปิดอีเมลที่บริษัทใช้ลงทะเบียนให้คุณ จะมีอีเมลจาก TapTime
+<br><span style="color:var(--muted);font-size:15px">ไม่เจอ? ลองดูในโฟลเดอร์ <b>สแปม</b> หรือ <b>จดหมายขยะ</b></span></li>
+<li>กดลิงก์ในอีเมล</li>
+<li>ตั้งรหัสผ่านของคุณเอง (อย่างน้อย 6 ตัวอักษร) แล้วกดยืนยัน</li>
+<li>เสร็จแล้ว เข้าใช้งานได้เลย</li>
+</ol>
+
+<div class="warn">
+<b>ยังไม่ได้รับอีเมล?</b>
+แจ้งหัวหน้าหรือฝ่ายบุคคลให้กดปุ่ม <b>"ส่งอีเมลเชิญใหม่"</b> ให้
+หรือให้เขาตั้งรหัสผ่านให้คุณโดยตรงก็ได้ (แล้วคุณค่อยเปลี่ยนทีหลัง)
+</div>
+
+<h3>เข้าสู่ระบบ</h3>
+
+<p>เปิดลิงก์ที่บริษัทให้มา ใส่อีเมลกับรหัสผ่าน แล้วกดเข้าสู่ระบบ</p>
+
+<div class="tip">
+<b>ติ๊ก "จดจำฉันไว้" ถ้าใช้มือถือตัวเอง</b>
+จะได้ไม่ต้องล็อกอินใหม่ทุกวัน ระบบจำไว้ให้ 30 วัน<br>
+<b>แต่ห้ามติ๊กบนเครื่องที่ใช้ร่วมกัน</b> เช่นแท็บเล็ตกลางของร้าน เพราะคนถัดไปจะเช็คอินในชื่อคุณได้
+</div>
+
+<h3>บันทึกไว้ที่หน้าจอโฮม (แนะนำมาก)</h3>
+
+<p>จะได้เปิดได้เร็วเหมือนแอปจริง ไม่ต้องพิมพ์ลิงก์ทุกครั้ง</p>
+
+<table>
+<tr><th style="width:20%">iPhone</th>
+<td>เปิดใน <b>Safari</b> → กดปุ่มแชร์ (สี่เหลี่ยมมีลูกศรขึ้น) → เลือก <b>เพิ่มไปยังหน้าจอโฮม</b></td></tr>
+<tr><th>Android</th>
+<td>เปิดใน <b>Chrome</b> → กดจุดสามจุดมุมขวาบน → เลือก <b>เพิ่มลงในหน้าจอหลัก</b></td></tr>
+</table>
+
+<div class="danger">
+<b>สำคัญมาก: อย่าเปิดผ่านเบราว์เซอร์ในแอป LINE หรือ Facebook</b>
+ถ้าเพื่อนส่งลิงก์มาทาง LINE แล้วคุณกดเปิดเลย มันจะเปิดในเบราว์เซอร์ของ LINE
+ซึ่ง <b>ใช้ลายนิ้วมือ/Face ID ไม่ได้</b> ทำให้เช็คอินไม่ผ่าน<br><br>
+ให้กดปุ่ม <b>"เปิดในเบราว์เซอร์"</b> (จุดสามจุดมุมขวาบน) เพื่อย้ายไป Safari หรือ Chrome ก่อน
+หรือใช้ไอคอนที่บันทึกไว้ที่หน้าจอโฮมแทน
+</div>
+
+<h2 id="checkin">2. เช็คอิน–เช็คเอาท์</h2>
+
+<p>อยู่หน้าแรก ตรงกลางจอ <b>เลื่อนปุ่มไปทางขวาจนสุด</b> ไม่ใช่กดเฉย ๆ</p>
+
+<div class="demo">
+<div class="slider green">
+  <div class="tx">เลื่อนเพื่อเข้างาน</div>
+  <div class="ar"><i></i><i></i><i></i></div>
+  <div class="kn">→</div>
+</div>
+<div class="hint">ลากปุ่มไปทางขวาจนสุดเพื่อเข้างาน</div>
+</div>
+
+<p>ตอนเลิกงาน ปุ่มจะเปลี่ยนเป็นสีส้ม</p>
+
+<div class="demo">
+<div class="slider orange">
+  <div class="tx">เลื่อนเพื่อออกงาน</div>
+  <div class="ar"><i></i><i></i><i></i></div>
+  <div class="kn">←</div>
+</div>
+<div class="hint">ลากปุ่มไปทางขวาจนสุดเพื่อออกงาน</div>
+</div>
+
+<p>เช็คอินและเช็คเอาท์ครบแล้ว ปุ่มจะกลายเป็นสีเทากดไม่ได้ จนถึงเที่ยงคืน</p>
+
+<div class="demo">
+<div class="slider gray">
+  <div class="tx">เช็คอินครบแล้ววันนี้</div>
+  <div class="kn">✓</div>
+</div>
+</div>
+
+<div class="tip">
+<b>เคล็ดลับ</b> กดที่ไหนบนแถบก็ลากได้ ไม่ต้องจิ้มให้ตรงวงกลมขาวพอดี
+พอลากสุดเครื่องจะสั่นเบา ๆ บอกว่าสำเร็จ
+</div>
+
+<h3>ครั้งแรกที่เช็คอิน — เครื่องจะขอสแกนนิ้ว/ใบหน้า</h3>
+
+<p>เป็นเรื่องปกติ ไม่ต้องตกใจ ระบบกำลัง <b>ผูกมือถือเครื่องนี้กับบัญชีคุณ</b></p>
+
+<ul>
+<li>ครั้งแรกเครื่องจะถามว่าจะสร้าง passkey ไหม → กด <b>ยืนยัน / อนุญาต</b></li>
+<li>ครั้งต่อ ๆ ไปจะแค่ให้สแกนนิ้วหรือมองหน้าจอเฉย ๆ ใช้เวลา 1 วินาที</li>
+<li>ถ้าเครื่องคุณไม่มีลายนิ้วมือหรือ Face ID ให้ <b>ตั้ง PIN ล็อกหน้าจอ</b> ก็ใช้แทนได้</li>
+</ul>
+
+<div class="note">
+<b>ทำไมต้องสแกนนิ้วทุกครั้ง</b>
+เพื่อยืนยันว่าเป็นตัวคุณจริง ๆ ไม่ใช่คนอื่นหยิบมือถือคุณไปกดแทน
+ลายนิ้วมือของคุณ <b>ไม่ได้ถูกส่งออกจากเครื่อง</b> และบริษัทมองไม่เห็น
+ระบบแค่ให้มือถือยืนยันกลับมาว่า "ใช่เจ้าของเครื่อง" เท่านั้น
+</div>
+
+<h3>ถ้าเปลี่ยนมือถือเครื่องใหม่</h3>
+<p>แจ้งหัวหน้าหรือฝ่ายบุคคลให้ถอนสิทธิ์เครื่องเก่าก่อน แล้วเช็คอินจากเครื่องใหม่ตามปกติ
+ระบบจะผูกให้เองอัตโนมัติ</p>
+
+<div class="danger">
+<b>มือถือหาย — แจ้งทันที</b>
+เพื่อให้ถอนสิทธิ์เครื่องนั้นออกจากบัญชีคุณ ไม่งั้นคนที่ได้เครื่องไปอาจเช็คอินแทนคุณได้
+</div>
+
+<h2 id="cant">3. เช็คอินไม่ได้ ทำยังไง</h2>
+
+<p>หาข้อความที่ขึ้นบนหน้าจอในตารางนี้ แล้วทำตามคอลัมน์ขวา</p>
+
+<table>
+<tr><th style="width:34%">ขึ้นข้อความว่า</th><th>ทำอย่างไร</th></tr>
+
+<tr><td><b>อยู่นอกพื้นที่</b><br>
+<span style="color:var(--muted);font-size:15px">บอกด้วยว่าห่างกี่เมตร</span></td>
+<td>เดินเข้าใกล้ที่ทำงานอีกนิดแล้วลองใหม่<br>
+ถ้าอยู่ในที่ทำงานแล้วแต่ยังขึ้นแบบนี้ — ออกไปยืนใกล้หน้าต่างหรือกลางแจ้งสักครู่
+เพราะสัญญาณ GPS ในอาคารมักคลาดเคลื่อน<br>
+ถ้าเป็นทุกวัน แจ้งหัวหน้าให้ขยายรัศมีเช็คอิน</td></tr>
+
+<tr><td><b>เข้าถึงตำแหน่งไม่ได้</b></td>
+<td>คุณยังไม่ได้อนุญาตให้เว็บใช้ตำแหน่ง<br>
+<b>iPhone:</b> ตั้งค่า → Safari → ตำแหน่งที่ตั้ง → ถาม หรือ อนุญาต<br>
+<b>Android:</b> ตั้งค่า → แอป → Chrome → สิทธิ์ → ตำแหน่ง → อนุญาต<br>
+แล้ว <b>ปิดหน้าเว็บเปิดใหม่</b></td></tr>
+
+<tr><td><b>ตำแหน่งไม่แม่นยำพอ</b></td>
+<td>เปิด GPS (ตำแหน่งที่ตั้ง) ในเครื่องให้เป็นโหมดความแม่นยำสูง
+ออกไปที่โล่ง รอ 10–20 วินาทีให้จับสัญญาณได้ แล้วลองใหม่</td></tr>
+
+<tr><td><b>วันนี้เป็นวันหยุด</b></td>
+<td>บริษัทตั้งค่าไม่ให้เช็คอินในวันหยุด ถ้าคุณต้องมาทำงานจริง แจ้งหัวหน้าให้บันทึกเวลาให้</td></tr>
+
+<tr><td><b>ต้องได้รับอนุมัติก่อน</b><br>
+<span style="color:var(--muted);font-size:15px">วันหยุดที่ต้องขออนุมัติ</span></td>
+<td>หน้าจอจะมี <b>ปุ่มขออนุมัติทำงานวันหยุด</b> ให้กดยื่นได้ทันที<br>
+พอหัวหน้าอนุมัติ คุณจะได้รับแจ้งเตือน แล้วเช็คอินได้เลย</td></tr>
+
+<tr><td><b>เช็คอินซ้ำ</b> / <b>เช็คเอาท์ซ้ำ</b></td>
+<td>วันนี้คุณทำไปแล้ว ระบบให้ทำได้วันละครั้ง ไม่ต้องทำอะไรต่อ</td></tr>
+
+<tr><td><b>ยังไม่ได้เช็คอิน</b></td>
+<td>คุณกดเช็คเอาท์โดยที่เช้านี้ยังไม่ได้เช็คอิน<br>
+ให้ยื่น <b>คำขอแก้เวลา</b> แล้วหัวหน้าจะบันทึกให้</td></tr>
+
+<tr><td><b>สแกนนิ้วไม่ผ่าน</b> / เครื่องไม่ขึ้นให้สแกน</td>
+<td>เช็ค 3 อย่างนี้ตามลำดับ<br>
+1. เปิดผ่านเบราว์เซอร์ใน LINE/Facebook อยู่หรือเปล่า → ต้องย้ายไป Safari/Chrome<br>
+2. เครื่องตั้งล็อกหน้าจอไว้หรือยัง (ลายนิ้วมือ / Face ID / PIN)<br>
+3. ยังไม่ได้ผลอีก แจ้งหัวหน้า</td></tr>
+
+<tr><td><b>เซสชันหมดอายุ</b></td>
+<td>เข้าสู่ระบบใหม่อีกครั้ง</td></tr>
+</table>
+
+<div class="tip">
+<b>ลืมเช็คอินหรือเช็คเอาท์ ไม่ต้องกังวล</b>
+ยื่น <b>คำขอแก้เวลา</b> ได้ (ดูหัวข้อ 5) บอกวันที่กับเวลาจริง แล้วหัวหน้าจะแก้ให้
+</div>
+
+<h2 id="hours">4. เวลาทำงานและ OT</h2>
+
+<p>ระหว่างที่ยังไม่เช็คเอาท์ หน้าจอจะนับเวลาให้ดูสด ๆ
+พอเช็คเอาท์แล้วจะสรุปให้เห็นเป็นกล่อง</p>
+
+<div class="card">
+<h4 style="margin-bottom:10px">ตัวอย่างกล่องสรุป</h4>
+<table style="margin:0">
+<tr><td style="width:44%">เวลาเข้างาน</td><td><b>08:00</b></td></tr>
+<tr><td>เวลาออกงาน</td><td><b>19:20</b></td></tr>
+<tr><td>เวลาทำงานปกติ</td><td><b>8 ชม. 20 นาที</b></td></tr>
+<tr><td>ล่วงเวลา (OT)</td><td><b>2 ชม. 0 นาที</b> <span class="badge b-wait">รออนุมัติ</span></td></tr>
+</table>
+</div>
+
+<h3>ทำไมเวลาทำงานปกติกับ OT ถึงแยกกัน</h3>
+<p>เพื่อไม่ให้นับซ้ำตอนคิดค่าจ้าง เอาสองตัวบวกกันจะได้เวลาที่คุณอยู่ที่ทำงานจริง (หักพักแล้ว)</p>
+
+<h3>สถานะของ OT</h3>
+<table>
+<tr><td style="width:32%"><span class="badge b-ok">นับแล้ว</span></td>
+<td>ได้รับอนุมัติเรียบร้อย จะเข้าไปอยู่ในรายงานที่ส่งฝ่ายบุคคล</td></tr>
+<tr><td><span class="badge b-wait">รออนุมัติ</span></td>
+<td>ระบบนับให้แล้ว แต่รอหัวหน้ากดยืนยัน — <b>ปกติ ไม่ต้องทำอะไร</b></td></tr>
+<tr><td><span class="badge b-gray">ยังไม่นับ</span></td>
+<td>เวลาที่อยู่ต่อยังไม่ถึงเกณฑ์ที่บริษัทตั้งไว้</td></tr>
+</table>
+
+<h3>ทำไมอยู่ต่อ 2 ชั่วโมงครึ่ง แต่ได้ OT แค่ 2 ชั่วโมง</h3>
+
+<p>บริษัทตั้งกฎการนับ OT ไว้ ซึ่งมักมี 3 อย่างนี้</p>
+
+<table>
+<tr><td style="width:32%"><b>ช่วงผ่อนผัน</b></td>
+<td>อยู่ต่อไม่เกิน เช่น 15 นาที ยังไม่นับเป็น OT</td></tr>
+<tr><td><b>ขั้นต่ำ</b></td>
+<td>ต้องทำอย่างน้อย เช่น 30 นาที ถึงจะเริ่มนับ ไม่ถึงคือได้ 0</td></tr>
+<tr><td><b>ปัดเศษ</b></td>
+<td>ปัดเป็นช่วงละ เช่น 30 นาที → ทำ 2 ชม. 20 นาที จะได้ 2 ชม.</td></tr>
+</table>
+
+<div class="note">
+<b>อยากรู้กฎของบริษัทคุณ</b> ถามหัวหน้าหรือฝ่ายบุคคลได้
+เขาเปิดหน้า "ตั้งค่า OT" ในระบบแล้วใส่เวลาของคุณ ระบบจะแสดงให้ดูทีละขั้นว่าเลขหายไปตรงไหน
+</div>
+
+<h3>ทำงานวันหยุด</h3>
+<p>ถ้าบริษัทอนุญาต หน้าจอจะขึ้นข้อความว่า
+<b>"วันนี้เป็นวันหยุด — เช็คอินจะนับเป็น OT ทั้งวัน"</b> แล้วปุ่มเลื่อนจะใช้ได้ตามปกติ</p>
+<p>วันหยุด <b>ไม่มีการนับว่ามาสาย</b> จะมากี่โมงก็ได้</p>
+
+<div class="warn">
+<b>ระบบไม่รองรับกะข้ามคืน</b>
+ถ้าคุณเข้างานก่อนเที่ยงคืนแล้วเลิกหลังเที่ยงคืน ระบบคำนวณให้ไม่ได้
+ให้ยื่นคำขอแก้เวลาแล้วหัวหน้าจะบันทึกให้
+</div>
+
+<h2 id="request">5. ยื่นคำขอ</h2>
+
+<p>กดแท็บ <b>คำขอ</b> ที่แถบล่างสุด — ในนี้รวมทั้ง <b>ใบลา · ใบขอ OT · ใบขอแก้เวลา</b> ไว้ที่เดียว</p>
+
+<h3>ยื่นขอลา</h3>
+<ol class="steps">
+<li>กดปุ่ม <b>ยื่นขอลา</b></li>
+<li>เลือกประเภทการลา วันที่เริ่ม–สิ้นสุด และเขียนเหตุผล</li>
+<li>กดส่ง — หัวหน้าจะได้รับแจ้งเตือนทันที</li>
+</ol>
+
+<div class="warn">
+<b>ระบบอาจไม่ให้ยื่นถ้า</b>
+<ul>
+<li><b>ยื่นกระชั้นเกินไป</b> — บางประเภทต้องยื่นล่วงหน้าตามที่บริษัทกำหนด</li>
+<li><b>วันที่ทับกับใบลาเดิม</b> — ระบบจะบอกว่าทับกับใบไหน ให้ยกเลิกใบเก่าก่อนหรือเลือกวันใหม่</li>
+</ul>
+</div>
+
+<p>ดูโควตาวันลาคงเหลือได้ที่ด้านบนของแท็บนี้
+ถ้าประเภทไหนไม่แสดงตัวเลข แปลว่าบริษัทตั้งค่าไม่ให้แสดง แต่คุณยังยื่นลาได้ตามปกติ</p>
+
+<h3>ยื่นขอ OT</h3>
+<p>กดปุ่ม <b>ยื่นขอทำ OT</b> ใส่วันที่ เวลาเริ่ม–สิ้นสุด และเหตุผล</p>
+
+<div class="note">
+<b>ไม่เห็นปุ่มนี้?</b> แปลว่าบริษัทตั้งค่าให้ระบบนับ OT ให้อัตโนมัติ
+หรือให้หัวหน้าเป็นคนบันทึกให้ — คุณไม่ต้องยื่นเอง แค่ทำงานตามปกติ
+</div>
+
+<p>ใบที่ยัง <b>รออนุมัติ</b> จะมีคำว่า "ยกเลิก" ให้กดได้
+ใบที่อนุมัติหรือปฏิเสธไปแล้วยกเลิกไม่ได้</p>
+
+<h3>ยื่นขอแก้เวลา</h3>
+<p>ใช้เมื่อ <b>ลืมเช็คอิน ลืมเช็คเอาท์ หรือเวลาที่บันทึกไว้ผิด</b></p>
+<ol class="steps">
+<li>กดปุ่ม <b>ขอแก้ไขเวลา</b></li>
+<li>เลือกวันที่ แล้วใส่เวลาที่ถูกต้อง — กรอกแค่ช่องที่ต้องแก้ก็ได้</li>
+<li>เขียนเหตุผลสั้น ๆ เช่น "ลืมเช็คเอาท์" แล้วกดส่ง</li>
+</ol>
+<p>พอหัวหน้าอนุมัติ ระบบจะแก้เวลาให้และคำนวณชั่วโมงทำงานกับ OT ใหม่อัตโนมัติ</p>
+
+<h2 id="other">6. ประวัติ วันหยุด รูปโปรไฟล์ แจ้งเตือน</h2>
+
+<h3>ประวัติ</h3>
+<p>แท็บ <b>ประวัติ</b> ดูเวลาเข้า–ออกและสถานะของคุณ</p>
+
+<h3>วันหยุด</h3>
+<p>แท็บ <b>วันหยุด</b> เป็นปฏิทิน<br>
+<span style="display:inline-block;width:13px;height:13px;border-radius:4px;background:#fdeaea;vertical-align:-1px"></span>
+สีชมพู = วันหยุดราชการ &nbsp;·&nbsp;
+<span style="display:inline-block;width:13px;height:13px;border-radius:4px;background:#eef0f2;vertical-align:-1px"></span>
+สีเทา = วันหยุดประจำสัปดาห์</p>
+
+<h3>เปลี่ยนรูปโปรไฟล์</h3>
+<p><b>แตะที่รูปตัวเองมุมซ้ายบน</b> แล้วเลือกรูปใหม่
+ระบบย่อและครอปให้อัตโนมัติ ไม่ต้องแต่งมาก่อน</p>
+
+<h3>การแจ้งเตือน</h3>
+<p>ไอคอน <b>กระดิ่ง</b> มุมขวาบน ตัวเลขสีแดงคือจำนวนที่ยังไม่ได้อ่าน
+เปิดแอปครั้งแรกของวันแล้วมีเรื่องค้าง จะมีเสียงกระดิ่งเบา ๆ</p>
+<p>คุณจะได้รับแจ้งเตือนเมื่อ <b>หัวหน้าอนุมัติหรือปฏิเสธ</b> ใบลา ใบ OT หรือคำขอแก้เวลาของคุณ</p>
+
+<h2 id="faq">7. คำถามที่พบบ่อย</h2>
+
+<details class="faq">
+<summary>ลืมรหัสผ่าน</summary>
+<div class="body">
+<p>แจ้งหัวหน้าหรือฝ่ายบุคคล ให้เขากด <b>"ส่งอีเมลเชิญใหม่"</b>
+คุณจะได้อีเมลสำหรับตั้งรหัสผ่านใหม่<br>
+ถ้าเข้าอีเมลไม่ได้ด้วย ให้เขา <b>ตั้งรหัสผ่านให้</b> โดยตรง แล้วคุณค่อยเปลี่ยนทีหลัง</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>เช็คอินแล้วขึ้นว่า "มาสาย" ทั้งที่มาตรงเวลา</summary>
+<div class="body">
+<p>ระบบเทียบกับเวลาเริ่มงานที่บริษัทตั้งไว้ ตรวจ 2 อย่าง</p>
+<ul>
+<li>เวลาในมือถือคุณตรงหรือเปล่า — ตั้งค่า → วันที่และเวลา → เปิด <b>ตั้งอัตโนมัติ</b></li>
+<li>คุณเลื่อนปุ่มตอนกี่โมงจริง ๆ ระบบบันทึกตอนที่เลื่อนสำเร็จ ไม่ใช่ตอนเดินเข้าประตู</li>
+</ul>
+<p>ถ้ายังคิดว่าผิด ยื่น <b>คำขอแก้เวลา</b> พร้อมเขียนเหตุผล</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>ต้องเปิด GPS ไว้ตลอดเวลาไหม</summary>
+<div class="body">
+<p><b>ไม่ต้อง</b> ระบบขอตำแหน่งเฉพาะตอนที่คุณเลื่อนปุ่มเช็คอินหรือเช็คเอาท์เท่านั้น
+ไม่มีการติดตามระหว่างวัน</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>บริษัทเห็นลายนิ้วมือหรือใบหน้าของเราไหม</summary>
+<div class="body">
+<p><b>ไม่เห็น</b> ข้อมูลชีวมิติของคุณอยู่ในมือถือเท่านั้น ไม่เคยถูกส่งออกจากเครื่อง</p>
+<p>สิ่งที่ระบบได้รับคือคำตอบว่า "ยืนยันตัวตนผ่านแล้ว" เท่านั้น
+เหมือนตอนคุณใช้สแกนนิ้วปลดล็อกแอปธนาคาร</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>เช็คอินให้เพื่อนได้ไหม</summary>
+<div class="body">
+<p><b>ไม่ได้</b> ระบบต้องยืนยันด้วยลายนิ้วมือหรือใบหน้าของเจ้าของบัญชีบนเครื่องที่ผูกไว้เท่านั้น</p>
+<p>และทุกครั้งที่มีการลงเวลา ระบบบันทึกพิกัด ระยะห่าง และหมายเลขเครื่องไว้เป็นหลักฐาน</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>เปลี่ยนมือถือแล้วเช็คอินไม่ได้</summary>
+<div class="body">
+<p>เพราะระบบยังผูกอยู่กับเครื่องเก่า แจ้งหัวหน้าให้ <b>ถอนสิทธิ์เครื่องเก่า</b>
+แล้วเช็คอินจากเครื่องใหม่ตามปกติ ระบบจะผูกให้เองอัตโนมัติ</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>ทำไมยื่นลาไม่ได้ ขึ้นว่าต้องยื่นล่วงหน้า</summary>
+<div class="body">
+<p>บริษัทกำหนดว่าการลาบางประเภทต้องยื่นล่วงหน้ากี่วัน เช่นลากิจต้องยื่นล่วงหน้า 3 วัน</p>
+<p>ถ้าเป็นเรื่องด่วนจริง ๆ ให้แจ้งหัวหน้าโดยตรง เขาบันทึกให้ได้</p>
+</div>
+</details>
+
+<details class="faq">
+<summary>ปุ่มเลื่อนหายไป เห็นแต่ปุ่มสีเทา</summary>
+<div class="body">
+<p>เกิดได้ 3 กรณี</p>
+<ul>
+<li><b>เช็คอินและเช็คเอาท์ครบแล้ว</b> — ปุ่มจะกลับมาใช้ได้ตอนเที่ยงคืน</li>
+<li><b>วันนี้เป็นวันหยุด</b> และบริษัทไม่อนุญาตให้ทำงานวันหยุด</li>
+<li><b>วันหยุดที่ต้องขออนุมัติก่อน</b> — จะมีปุ่มขออนุมัติขึ้นให้ใต้ปุ่มสีเทา</li>
+</ul>
+</div>
+</details>
+
+<details class="faq">
+<summary>หน้าจอไม่พอดี ต้องเลื่อนซ้ายขวา</summary>
+<div class="body">
+<p>ลอง <b>ปิดหน้าเว็บแล้วเปิดใหม่</b> หรือดึงหน้าจอลงเพื่อรีเฟรช</p>
+<p>ถ้ายังเป็น ให้ล้างแคชเบราว์เซอร์ หรือใช้ไอคอนที่บันทึกไว้ที่หน้าจอโฮมแทน</p>
+</div>
+</details>
+
+<button class="printbtn" onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button>
+
+<hr>
+<p style="color:var(--muted);font-size:15px;text-align:center">
+TapTime เวอร์ชัน 1.3 · คู่มือพนักงาน<br>
+ติดปัญหาที่ไม่มีในคู่มือนี้ ให้แจ้งหัวหน้างานหรือฝ่ายบุคคล
+</p>
+
+</div>
+</body>
+</html>
