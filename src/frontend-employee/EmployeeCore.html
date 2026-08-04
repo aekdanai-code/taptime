@@ -92,6 +92,10 @@ var THAI_DAYS=['อาทิตย์','จันทร์','อังคาร'
 var THAI_MON=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 function tick(){
   var d=new Date();
+
+  /* ถึงเวลาที่เช็คอินได้แล้ว → ปลดล็อกปุ่มให้เอง ไม่ต้องรีเฟรชหน้า */
+  if(_waitingGate && !earlyGate()){ _waitingGate=false; renderHome(); return; }
+
   var e1=$('clockTime');
   if(e1)e1.textContent=p2_(d.getHours())+':'+p2_(d.getMinutes());
   var e2=$('clockDate');
@@ -220,8 +224,11 @@ function renderHome(){
     '</div>';
   bindSlider(a);
   fillRequests();
+  // จำไว้ว่ากำลังรอเวลาเช็คอินอยู่ เพื่อให้ tick() ปลดล็อกให้เองเมื่อถึงเวลา
+  _waitingGate = !a && !CTX.todayHoliday && !!earlyGate();
   tick();
 }
+var _waitingGate=false;
 function stCell(icon,color,val,label){return '<div class="st"><span class="ic" style="color:'+color+
   '">'+svgI(icon,{size:19})+'</span><b>'+val+'</b><span>'+label+'</span></div>';}
 
@@ -304,8 +311,30 @@ function stateArea(a){
       'ลากปุ่มไปทางขวาจนสุด — วันนี้นับเป็น OT');
   }
 
-  // วันทำงานปกติ ยังไม่เช็คอิน → สไลด์เข้างาน (เขียว) เปิดตั้งแต่ 00:00
+  /* ---- ยังไม่ถึงเวลาที่เช็คอินได้ ----
+   * สาขาตั้ง "เช็คอินก่อนเวลาได้ (นาที)" ไว้ → ก่อนหน้านั้นล็อกปุ่มไว้ก่อน
+   * (เซิร์ฟเวอร์ตรวจซ้ำอยู่แล้ว ตรงนี้แค่ไม่ให้กดแล้วโดนปฏิเสธเปล่า ๆ)
+   */
+  var gate=earlyGate();
+  if(gate)
+    return '<div class="statebox waiting">'+
+      '<div class="sb-badge gray">'+svgI('clock',{size:15})+' ยังไม่ถึงเวลาเช็คอิน</div>'+
+      '<div class="sb-in">เช็คอินได้ตั้งแต่ <b>'+esc(gate)+'</b> น.</div>'+
+    '</div>'+slideDisabled('เช็คอินได้ตอน '+gate+' น.');
+
+  // วันทำงานปกติ ยังไม่เช็คอิน → สไลด์เข้างาน (เขียว)
   return slideCtl('in','green','เลื่อนเพื่อเข้างาน','login','ลากปุ่มไปทางขวาจนสุดเพื่อเข้างาน');
+}
+
+/**
+ * คืนเวลา 'HH:mm' ถ้ายังเช็คอินไม่ได้ (ยังไม่ถึงเวลา) — คืน '' ถ้าเช็คอินได้แล้ว
+ * ใช้กติกาเดียวกับ earliestCheckInOf() ฝั่งเซิร์ฟเวอร์
+ */
+function earlyGate(){
+  var e=CTX&&CTX.earliestCheckIn;
+  if(!e) return '';
+  var d=new Date();
+  return (d.getHours()*60+d.getMinutes()) < hm2min(e) ? e : '';
 }
 
 /** วันนี้มีใบ OT ที่อนุมัติแล้วหรือยัง (ใช้ปลดล็อกการเช็คอินวันหยุด) */
@@ -403,6 +432,11 @@ function handleFail(r,kind){
       'ระบบไม่ได้รับพิกัดจากเครื่องของคุณ\n'+
       'กรุณาอนุญาตการเข้าถึงตำแหน่งในตั้งค่าของเบราว์เซอร์ แล้วเปิดหน้านี้ใหม่',
       'error', renderHome);
+  }
+  else if(r.reason==='too_early'){
+    showAlert('ยังไม่ถึงเวลาเช็คอิน',
+      'เช็คอินได้ตั้งแต่ '+(r.earliestTime||'')+' น. เป็นต้นไป\n'+
+      '(เวลาเริ่มงาน '+(r.workStart||'')+' น.)','info', loadCtx);
   }
   else if(r.reason==='branch_no_location'){
     showAlert('สาขายังไม่ได้ตั้งพิกัด',

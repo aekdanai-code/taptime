@@ -21,6 +21,10 @@ function renderOtPolicy(){
   run('getOtPolicy').then(function(p){
     OTP = p || {};
     drawOtPolicy();
+  }).catch(function(e){
+    $('content').innerHTML='<div class="card"><b>โหลดนโยบาย OT ไม่สำเร็จ</b><br>'+
+      esc(e.message||e)+'<br><br>ถ้าเพิ่งอัปเดตระบบ ให้รัน '+
+      '<code>supabase/migration-005-overtime.sql</code> บน Supabase ก่อน</div>';
   });
 }
 
@@ -272,12 +276,18 @@ function saveOtPolicyM(){
     }
   }
   run('saveOtPolicy',p).then(function(saved){
+    // เซิร์ฟเวอร์ต้องยืนยันกลับมาว่าบันทึกเป็นโหมดที่เราส่งไปจริง ๆ
+    if(!saved || saved.mode!==p.mode)
+      throw new Error('เซิร์ฟเวอร์ไม่ได้บันทึกโหมดที่เลือก — ตรวจว่ารัน migration-005 แล้วหรือยัง');
     OTP=saved; toast('บันทึกนโยบาย OT แล้ว');
     return run('adminBootstrap');
   }).then(function(b){
     BOOT=b;
     // เปลี่ยนโหมดแล้วเมนูต้องซ่อน/โผล่ทันที ไม่ต้อง login ใหม่
     if(typeof applyOtVisibility==='function') applyOtVisibility();
+  }).catch(function(e){
+    // เดิมไม่มี catch — บันทึกไม่สำเร็จแล้วเงียบสนิท ทำให้เข้าใจผิดว่าบันทึกแล้ว
+    toast('บันทึกไม่สำเร็จ: '+(e.message||e));
   });
 }
 </script>

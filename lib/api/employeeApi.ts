@@ -10,7 +10,7 @@ import { T, readObjects, findOne, appendObject, updateByKey } from '../db';
 import {
   uid, today, nowHHMM, nowStamp, thisMonth, thisYear,
   distanceMeters, normalizeAtt, normalizeLeave, normalizeTimeEdit,
-  normalizeHoliday, asDateStr,
+  normalizeHoliday, asDateStr, toMinutes,
 } from '../helpers';
 import { attendanceOf, writeCheckIn, writeCheckOut, getBranch } from './attendance';
 import { holidayMap, weeklyOffArr, dayTypeOf } from './holidays';
@@ -161,6 +161,11 @@ export async function employeeContext(empId: string) {
     attendance: attToday,
     /* นโยบาย OT เฉพาะฟิลด์ที่พนักงานต้องใช้ — ห้ามส่งฟิลด์เกี่ยวกับเงิน */
     ot: employeeOtView(otPolicy),
+    /* เวลาเร็วที่สุดที่เช็คอินได้ของวันทำงานปกติ ('' = ไม่จำกัด)
+     * ส่งมาให้หน้าเว็บล็อกปุ่มไว้ก่อน จะได้ไม่ต้องกดแล้วโดนปฏิเสธ
+     * (เซิร์ฟเวอร์ยังตรวจซ้ำอยู่ดี — ค่านี้มีไว้เพื่อ UX เท่านั้น)
+     */
+    earliestCheckIn: earliestCheckInOf(branch, otPolicy),
     myOt: (myOtRaw as any[])
       .map((r) => ({
         otId: r.otId, date: asDateStr(r.date), kind: r.kind, status: r.status,
@@ -275,6 +280,60 @@ async function audit(
   }
 }
 
+/** 'HH:mm' จากจำนวนนาทีนับจากเที่ยงคืน */
+function hhmm(min: number): string {
+  const m = Math.max(0, Math.round(min));
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' +
+         String(m % 60).padStart(2, '0');
+}
+
+/**
+ * เวลาเร็วที่สุดที่เช็คอินได้ของวันทำงานปกติ — คืน '' ถ้าไม่จำกัด
+ * เป็น pure function เพื่อให้ทดสอบได้และใช้ร่วมกับ checkEarlyWindow()
+ */
+export function earliestCheckInOf(branch: any, policy: any): string {
+  if (policy && policy.mode !== 'off' && policy.countBeforeShift) return '';
+  const raw = branch ? branch.earlyCheckinMin : null;
+  if (raw === null || raw === undefined || raw === '') return '';
+  const early = Number(raw);
+  if (!Number.isFinite(early) || early < 0) return '';
+  const startMin = toMinutes((branch && branch.workStart) || '08:00');
+  if (startMin == null) return '';
+  return hhmm(Math.max(0, startMin - early));
+}
+
+/**
+ * เช็คอินเร็วเกินกรอบที่สาขาอนุญาตหรือไม่ (ใช้กับวันทำงานปกติเท่านั้น)
+ *
+ * แยกออกมาเป็นฟังก์ชันเพื่อให้ทดสอบได้ และให้ฝั่งหน้าเว็บใช้กติกาเดียวกัน
+ * — ถ้า `earlyCheckinMin` ยังไม่ได้ตั้งค่า (null/ว่าง) จะ **ไม่บังคับ**
+ *   เพื่อไม่ให้สาขาที่ยังไม่เคยบันทึกตั้งค่าใหม่ ถูกล็อกไม่ให้เช็คอินกะทันหัน
+ */
+export async function checkEarlyWindow(emp: any, timeHHMM: string) {
+  const [branch, policy] = await Promise.all([
+    getBranch(emp.branchId),
+    activePolicy(),
+  ]);
+
+  const earliest = earliestCheckInOf(branch, policy);
+  if (!earliest) return { ok: true as const };
+
+  const eMin = toMinutes(earliest);
+  const nowMin = toMinutes(timeHHMM);
+  if (eMin == null || nowMin == null) return { ok: true as const };
+
+  if (nowMin < eMin) {
+    return {
+      ok: false as const,
+      reason: 'too_early',
+      earliestTime: earliest,
+      workStart: branch.workStart || '08:00',
+      earlyMinutes: Number(branch.earlyCheckinMin),
+    };
+  }
+  return { ok: true as const };
+}
+
 /** ตรวจความแม่นยำของพิกัด */
 function checkAccuracy(ctx?: CheckCtx) {
   const acc = Number(ctx?.accuracy);
@@ -334,6 +393,21 @@ export async function empCheckIn(empId: string, lat: any, lng: any, ctx?: CheckC
           holidayName: dt.name,
         };
       }
+    }
+  }
+
+  /* ---- กรอบเวลาเช็คอิน (เฉพาะวันทำงานปกติ) ----
+   * เดิมเช็คอินได้ตั้งแต่เที่ยงคืน ค่า `earlyCheckinMin` ของสาขาถูกเก็บไว้เฉย ๆ
+   * ตอนนี้บังคับใช้จริง: เช็คอินก่อน (เวลาเริ่มงาน − earlyCheckinMin) ไม่ได้
+   *
+   * ยกเว้นเมื่อนโยบาย OT เปิด "นับ OT ก่อนเข้างาน" เพราะแปลว่าบริษัทตั้งใจ
+   * ให้มาทำงานก่อนเวลาได้อยู่แล้ว
+   */
+  if (!isHoliday) {
+    const gate = await checkEarlyWindow(emp, nowHHMM());
+    if (!gate.ok) {
+      await audit(emp.empId, 'checkin', 'too_early', lat, lng, geo.distance, ctx);
+      return gate;
     }
   }
 

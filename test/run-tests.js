@@ -2005,6 +2005,102 @@ async function t(name, fn) {
       'เฟสนี้ยังไม่ควรมีโค้ดแตะคอลัมน์ฝั่งการจ่าย:\n' + hits.join('\n'));
   });
 
+  console.log('\n── กรอบเวลาเช็คอิน (เช็คอินก่อนเวลา) ───────');
+
+  const BR = { workStart: '08:00', workEnd: '17:00', earlyCheckinMin: 30 };
+  const polOf = (over) => overtime.normalizePolicy({
+    ...overtime.DEFAULT_POLICY, ...over });
+
+  await t('กรอบเวลา: earliestCheckInOf = เวลาเริ่มงาน − เช็คอินก่อนเวลาได้', () => {
+    assert.strictEqual(
+      employeeApi.earliestCheckInOf(BR, polOf({ mode: 'request_after' })), '07:30');
+    assert.strictEqual(
+      employeeApi.earliestCheckInOf({ ...BR, earlyCheckinMin: 0 },
+        polOf({ mode: 'off' })), '08:00');
+    assert.strictEqual(
+      employeeApi.earliestCheckInOf({ ...BR, workStart: '09:15', earlyCheckinMin: 45 },
+        polOf({ mode: 'off' })), '08:30');
+  });
+
+  await t('กรอบเวลา: ไม่ได้ตั้งค่า -> ไม่บังคับ (ของเดิมไม่พัง)', () => {
+    for (const v of [null, undefined, '', 'abc', -5]) {
+      assert.strictEqual(
+        employeeApi.earliestCheckInOf({ ...BR, earlyCheckinMin: v },
+          polOf({ mode: 'off' })), '',
+        'ค่า ' + JSON.stringify(v) + ' ไม่ควรบังคับกรอบเวลา');
+    }
+  });
+
+  await t('กรอบเวลา: เปิด "นับ OT ก่อนเข้างาน" -> ไม่จำกัด (ทุกโหมดที่ไม่ใช่ off)', () => {
+    ['auto', 'request_after', 'request_before', 'admin_only'].forEach((mode) => {
+      assert.strictEqual(
+        employeeApi.earliestCheckInOf(BR, polOf({ mode, countBeforeShift: true })), '',
+        mode + ': เปิดนับ OT ก่อนเข้างานแล้วยังล็อกอยู่');
+    });
+    // โหมด off ไม่สนใจ countBeforeShift เพราะ OT ไม่ทำงาน
+    assert.strictEqual(
+      employeeApi.earliestCheckInOf(BR, polOf({ mode: 'off', countBeforeShift: true })),
+      '07:30');
+  });
+
+  await t('กรอบเวลา: มีผลกับทุกโหมด OT เท่ากัน', () => {
+    ['off', 'auto', 'request_after', 'request_before', 'admin_only'].forEach((mode) => {
+      assert.strictEqual(employeeApi.earliestCheckInOf(BR, polOf({ mode })), '07:30',
+        mode + ': กรอบเวลาไม่ตรงกับโหมดอื่น');
+    });
+  });
+
+  await t('กรอบเวลา: checkEarlyWindow ปฏิเสธเฉพาะก่อนเวลา', async () => {
+    const emp = await employees.listEmployees()
+      .then((r) => r.filter((e) => e.empId === EMP_A)[0]);
+    assert.ok(emp);
+    const early = await employeeApi.checkEarlyWindow(emp, '06:00');
+    assert.strictEqual(early.ok, false);
+    assert.strictEqual(early.reason, 'too_early');
+    assert.strictEqual(early.earliestTime, '07:30');
+    assert.strictEqual(early.workStart, '08:00');
+    // ตรงเวลาพอดีต้องผ่าน (ไม่ใช่ "ต้องเกิน")
+    assert.strictEqual((await employeeApi.checkEarlyWindow(emp, '07:30')).ok, true);
+    assert.strictEqual((await employeeApi.checkEarlyWindow(emp, '09:00')).ok, true);
+  });
+
+  await t('กรอบเวลา: employeeContext ส่ง earliestCheckIn ให้หน้าเว็บล็อกปุ่มไว้ก่อน', async () => {
+    const c = await employeeApi.employeeContext(EMP_A);
+    assert.strictEqual(c.earliestCheckIn, '07:30');
+  });
+
+  await t('กรอบเวลา: หน้าพนักงานล็อกปุ่มและปลดล็อกเองเมื่อถึงเวลา', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    ['function earlyGate', 'ยังไม่ถึงเวลาเช็คอิน', 'เช็คอินได้ตอน', 'earliestCheckIn']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    // ต้องปลดล็อกเองจากนาฬิกาที่เดินอยู่ ไม่ใช่ให้ผู้ใช้รีเฟรชเอง
+    assert.ok(/_waitingGate[\s\S]{0,120}renderHome\(\)/.test(h),
+      'ถึงเวลาแล้วไม่ได้ปลดล็อกปุ่มให้อัตโนมัติ');
+    assert.ok(h.includes("r.reason==='too_early'"), 'ไม่ได้จัดการ error too_early');
+  });
+
+  await t('กรอบเวลา: ไม่บังคับในวันหยุด (วันหยุดใช้กฎ OT แทน)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    // ฝั่งหน้าเว็บ: ตรวจวันหยุดก่อนแล้วค่อยตรวจกรอบเวลา
+    assert.ok(h.indexOf('CTX.todayHoliday') < h.indexOf('var gate=earlyGate()'),
+      'ลำดับผิด: ต้องตรวจวันหยุดก่อนกรอบเวลา');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'lib', 'api', 'employeeApi.ts'), 'utf8');
+    assert.ok(/if \(!isHoliday\) \{[\s\S]{0,200}checkEarlyWindow/.test(src),
+      'ฝั่งเซิร์ฟเวอร์ยังบังคับกรอบเวลาในวันหยุดอยู่');
+  });
+
+  await t('บันทึกนโยบาย OT ล้มเหลวต้องไม่เงียบ', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    assert.ok(/saveOtPolicy[\s\S]{0,900}\.catch\(/.test(h),
+      'saveOtPolicy ไม่มี catch — บันทึกไม่สำเร็จแล้วผู้ใช้ไม่รู้ตัว');
+    assert.ok(h.includes('บันทึกไม่สำเร็จ'), 'ไม่มีข้อความแจ้งเมื่อบันทึกไม่สำเร็จ');
+    assert.ok(/saved\.mode!==p\.mode/.test(h),
+      'ไม่ได้ตรวจว่าเซิร์ฟเวอร์บันทึกโหมดที่เลือกจริง');
+    assert.ok(/getOtPolicy[\s\S]{0,400}migration-005/.test(h),
+      'โหลดนโยบายไม่ได้แล้วไม่ได้บอกให้รัน migration');
+  });
+
   console.log('\n── คู่มือการใช้งาน ─────────────────────────');
 
   const DOCS = path.join(__dirname, '..', 'docs');
@@ -2046,8 +2142,13 @@ async function t(name, fn) {
     // ข้อจำกัดที่ปิดบังไม่ได้ ไม่งั้นผู้ใช้จะเจอปัญหาแล้วไม่รู้ว่าเป็นเรื่องปกติ
     ['ไม่คำนวณเงิน', 'ข้ามเที่ยงคืน', 'ชุดเดียวใช้ทั้งบริษัท']
       .forEach((k) => assert.ok(a.includes(k), 'คู่มือแอดมินไม่ได้บอกข้อจำกัด: ' + k));
-    assert.ok(/เช็คอินก่อนเวลาได้[\s\S]{0,300}ยังไม่มีผล/.test(a),
-      'คู่มือต้องบอกว่าช่อง "เช็คอินก่อนเวลาได้" ยังไม่ถูกบังคับใช้');
+    // ความสับสนหลักของผู้ใช้: คิดว่า "ปิด OT" = ห้ามลงเวลานอกเวลางาน
+    assert.ok(a.includes('เช็คอินก่อนเวลาได้'),
+      'คู่มือต้องอธิบายช่อง "เช็คอินก่อนเวลาได้"');
+    assert.ok(!/เช็คอินก่อนเวลาได้[\s\S]{0,300}ยังไม่มีผล/.test(a),
+      'คู่มือยังเขียนว่าช่องนี้ไม่มีผล ทั้งที่บังคับใช้แล้ว');
+    assert.ok(/ปิดระบบ OT[\s\S]{0,200}ยังลงเวลาได้/.test(a),
+      'คู่มือต้องบอกว่าปิด OT ไม่ได้แปลว่าห้ามลงเวลา');
     assert.ok(e.includes('ข้ามคืน'), 'คู่มือพนักงานไม่ได้เตือนเรื่องกะข้ามคืน');
     assert.ok(/LINE/.test(e), 'คู่มือพนักงานไม่ได้เตือนเรื่องเบราว์เซอร์ในแอป');
   });
