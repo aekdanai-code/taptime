@@ -78,8 +78,11 @@ export async function writeCheckIn(
   const startMin = toMinutes(branch.workStart || '08:00') ?? 480;
   const inMin = toMinutes(time) ?? 0;
   const threshold = Number(branch.lateThreshold || 0);
-  const lateMinutes = Math.max(0, inMin - startMin);
-  const status = lateMinutes > threshold ? 'late' : 'ontime';
+
+  // ทำงานวันหยุดไม่มี "มาสาย" — ไม่มีเวลาเข้างานให้สายตั้งแต่แรก
+  const isHoliday = String(dayType || '').indexOf('วันหยุด') === 0;
+  const lateMinutes = isHoliday ? 0 : Math.max(0, inMin - startMin);
+  const status = !isHoliday && lateMinutes > threshold ? 'late' : 'ontime';
 
   const existing = await attendanceOf(emp.empId, date);
 

@@ -16,6 +16,7 @@ import { attendanceOf, writeCheckIn, writeCheckOut, getBranch } from './attendan
 import { holidayMap, weeklyOffArr, dayTypeOf } from './holidays';
 import { entitlementsFor } from './leaveAssign';
 import { notifyAdmins } from './notifications';
+import { activePolicy, employeeOtView } from './overtime';
 
 /** 'yyyy-MM-dd' -> 'DD/MM/YYYY' สำหรับข้อความแจ้งเตือน */
 function thaiDate(ds: string) {
@@ -41,7 +42,7 @@ export async function employeeContext(empId: string) {
   if (!emp) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
 
   const [branch, myAtt, myLeavesRaw, myTimeEditsRaw, allLeaveTypes, myAssigns,
-         holidayRows, hmap, woff] =
+         holidayRows, hmap, woff, otPolicy, myOtRaw] =
     await Promise.all([
       getBranch(emp.branchId),
       readObjects(T.ATTENDANCE, { empId: emp.empId }),
@@ -52,6 +53,8 @@ export async function employeeContext(empId: string) {
       readObjects(T.HOLIDAYS),
       holidayMap(),
       weeklyOffArr(),
+      activePolicy(),
+      readObjects(T.OTREQUESTS, { empId: emp.empId }).catch(() => []),
     ]);
 
   // สิทธิ์การลาของพนักงานคนนี้ (ตาม assignment + โควตาเฉพาะราย)
@@ -72,15 +75,19 @@ export async function employeeContext(empId: string) {
   const attAll = myAtt.map(normalizeAtt);
   const attToday = attAll.filter((a: any) => a.date === td)[0] || null;
 
-  /* ---- สถิติเดือนนี้ ---- */
-  let lateCount = 0, lateMin = 0, otMin = 0, workDays = 0;
+  /* ---- สถิติเดือนนี้ ----
+   * OT นับเฉพาะที่อนุมัติแล้ว ส่วนที่รออนุมัติแยกอีกช่อง — ห้ามรวมกัน
+   */
+  let lateCount = 0, lateMin = 0, otMin = 0, otPendingMin = 0, workDays = 0;
   attAll
     .filter((a: any) => String(a.date).indexOf(ym) === 0)
     .forEach((a: any) => {
       if (a.checkInTime) workDays++;
       if (a.status === 'late') lateCount++;
       lateMin += Number(a.lateMinutes || 0);
-      otMin += Number(a.otMinutes || 0);
+      const m = Math.max(0, Number(a.otMinutes) || 0);
+      if (String(a.otStatus) === 'approved') otMin += m;
+      else if (String(a.otStatus) === 'pending') otPendingMin += m;
     });
 
   const myLeaves = myLeavesRaw
@@ -150,7 +157,22 @@ export async function employeeContext(empId: string) {
     today: td,
     todayHoliday: todayType.type !== 'work',
     todayHolidayName: todayType.name || '',
+    todayDayType: todayType.type === 'work' ? 'workday' : todayType.type,
     attendance: attToday,
+    /* นโยบาย OT เฉพาะฟิลด์ที่พนักงานต้องใช้ — ห้ามส่งฟิลด์เกี่ยวกับเงิน */
+    ot: employeeOtView(otPolicy),
+    myOt: (myOtRaw as any[])
+      .map((r) => ({
+        otId: r.otId, date: asDateStr(r.date), kind: r.kind, status: r.status,
+        dayType: r.dayType, source: r.source,
+        plannedStart: r.plannedStart || '', plannedEnd: r.plannedEnd || '',
+        actualStart: r.actualStart || '', actualEnd: r.actualEnd || '',
+        minutesRequested: Number(r.minutesRequested) || 0,
+        minutesApproved: r.minutesApproved == null ? null : Number(r.minutesApproved),
+        reason: r.reason || '', adminNote: r.adminNote || '',
+        requestedAt: r.requestedAt || '',
+      }))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date))),
     leaveTypes,
     holidays: holidayRows.map(normalizeHoliday),
     weeklyOff: woff,
@@ -162,7 +184,8 @@ export async function employeeContext(empId: string) {
       lateCount,
       leaveCount,
       lateMinutes: lateMin,
-      otMinutes: otMin,
+      otMinutes: otMin,                 // อนุมัติแล้วเท่านั้น
+      otPendingMinutes: otPendingMin,   // รออนุมัติ — แยกช่อง ห้ามรวม
     },
     leaveBalances,
     myLeaves,
@@ -281,27 +304,62 @@ export async function empCheckIn(empId: string, lat: any, lng: any, ctx?: CheckC
     return geo;
   }
 
-  // กันเช็คอินในวันหยุด (ราชการ/ประจำสัปดาห์)
+  /* ---- วันหยุด ----
+   * ของเดิมปฏิเสธทุกกรณี ทำให้บันทึก OT วันหยุดไม่ได้เลย
+   * ตอนนี้ขึ้นกับนโยบาย OT:
+   *   !allowHolidayWork      -> ปฏิเสธ (เหมือนเดิม)
+   *   holidayNeedsRequest    -> ต้องมีใบขอทำงานวันหยุดที่อนุมัติแล้ว
+   *   ผ่าน                    -> เช็คอินได้ และถูกทำเครื่องหมายเป็นวันหยุด
+   */
   const [hmap, woff] = await Promise.all([holidayMap(), weeklyOffArr()]);
-  const dt = dayTypeOf(today(), hmap, woff);
-  if (dt.type !== 'work') {
-    await audit(emp.empId, 'checkin', 'holiday', lat, lng, geo.distance, ctx);
-    return { ok: false, reason: 'holiday', holidayName: dt.name };
+  const td = today();
+  const dt = dayTypeOf(td, hmap, woff);
+  const isHoliday = dt.type !== 'work';
+
+  if (isHoliday) {
+    const policy = await activePolicy();
+    if (policy.mode === 'off' || !policy.allowHolidayWork) {
+      await audit(emp.empId, 'checkin', 'holiday', lat, lng, geo.distance, ctx);
+      return { ok: false, reason: 'holiday', holidayName: dt.name };
+    }
+    if (policy.holidayNeedsRequest) {
+      const { approvedRequests } = await import('./otRequests');
+      const ok = (await approvedRequests(emp.empId, td)).length > 0;
+      if (!ok) {
+        await audit(emp.empId, 'checkin', 'holiday_needs_request',
+          lat, lng, geo.distance, ctx);
+        return {
+          ok: false,
+          reason: 'holiday_needs_request',
+          holidayName: dt.name,
+        };
+      }
+    }
   }
 
-  const existing = await attendanceOf(emp.empId, today());
+  const existing = await attendanceOf(emp.empId, td);
   if (existing && existing.checkInTime) {
     await audit(emp.empId, 'checkin', 'already_in', lat, lng, geo.distance, ctx);
     return { ok: false, reason: 'already_in' };
   }
 
-  const rec = await writeCheckIn(emp, today(), nowHHMM(), 'วันปกติ', lat, lng);
+  const rec = await writeCheckIn(
+    emp, td, nowHHMM(), isHoliday ? 'วันหยุด' : 'วันปกติ', lat, lng
+  );
+  if (isHoliday) {
+    // ทำเครื่องหมายไว้ตั้งแต่เช็คอิน ให้หน้าจอรู้ทันทีว่าวันนี้เป็น OT วันหยุด
+    await updateByKey(T.ATTENDANCE, 'recId', rec.recId, {
+      otDayType: dt.type === 'holiday' ? 'holiday' : 'weekend',
+    });
+  }
   await audit(emp.empId, 'checkin', 'ok', lat, lng, geo.distance, ctx);
 
   return {
     ok: true,
     late: rec.status === 'late',
     lateMinutes: rec.lateMinutes,
+    holiday: isHoliday,
+    holidayName: isHoliday ? dt.name : '',
     record: rec,
   };
 }

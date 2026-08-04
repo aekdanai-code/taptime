@@ -66,7 +66,9 @@ var ICONS={
   info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.7v.02"/>',
   edit:'<path d="M4 20.5h4.5L19 10l-4.5-4.5L4 16v4.5Z"/><path d="M12.5 6.5 17 11"/>',
   user:'<circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
-  camera:'<path d="M3 8.5h3.2L8 6h8l1.8 2.5H21v11H3z"/><circle cx="12" cy="14" r="3.4"/>'
+  camera:'<path d="M3 8.5h3.2L8 6h8l1.8 2.5H21v11H3z"/><circle cx="12" cy="14" r="3.4"/>',
+  clipboard:'<rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9 4.5V3.5h6v1M9.5 10h5M9.5 13.5h3.5"/>',
+  zap:'<path d="M13 3 5 13.5h5.5L9.5 21 19 10h-5.5L14.5 3Z"/>'
 };
 function svgI(name,opt){opt=opt||{};var s=opt.size||20;
   return '<svg viewBox="0 0 24 24" width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" '+
@@ -150,6 +152,7 @@ function switchPage(p){
   document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.p===p);});
   document.querySelectorAll('.page').forEach(function(pg){pg.classList.toggle('on',pg.id==='pg_'+p);});
   if(p==='history')loadHistory();
+  if(p==='leave')fillRequests();
   if(p==='holiday')drawEmpCalendar();
 }
 
@@ -178,20 +181,35 @@ function renderHome(){
         stCell('alert','var(--orange)',s.lateCount,'มาสาย (ครั้ง)')+
         stCell('flag','var(--blue)',s.leaveCount,'ลา (ครั้ง)')+
       '</div>'+
+      (otOn()
+        ? '<div class="sec"><h4>ล่วงเวลาเดือนนี้</h4>'+
+          '<div class="ot-stat"><div><b>'+otMinTxt(s.otMinutes)+'</b><span>อนุมัติแล้ว</span></div>'+
+          '<div><b>'+otMinTxt(s.otPendingMinutes||0)+'</b><span>รออนุมัติ</span></div></div></div>'
+        : '')+
       '<div class="sec"><h4>สถานะการส่งคำขอ</h4>'+leavePreview()+'</div>'+
     '</div>'+
 
     '<div class="page" id="pg_history">'+
       '<div class="sec"><h4>ประวัติการเข้า-ออกงาน</h4>'+
         '<div id="histList"><div class="spinner"></div></div></div>'+
-      '<button class="btn-out" onclick="openTimeEditForm()">'+svgI('edit',{size:16})+' ขอแก้ไขเวลา (ลืมเช็คเอาท์)</button>'+
-      '<div class="sec"><h4>คำขอแก้เวลาของฉัน</h4><div id="teList"></div></div>'+
     '</div>'+
 
+    /* แท็บ "คำขอ" — รวมใบลา ใบแก้เวลา และใบ OT ไว้ที่เดียว */
     '<div class="page" id="pg_leave">'+
       '<div class="sec"><h4>โควตาวันลาคงเหลือ (ปีนี้)</h4>'+leaveBalanceList()+'</div>'+
-      '<div class="sec"><h4>รายการวันลา</h4>'+leaveList()+'</div>'+
-      '<button class="btn-dark" onclick="openLeaveForm()">'+svgI('plus',{size:16})+' ยื่นขอลา</button></div>'+
+      '<div class="sec"><h4>คำขอลา</h4>'+leaveList()+'</div>'+
+      '<button class="btn-dark" onclick="openLeaveForm()">'+svgI('plus',{size:16})+' ยื่นขอลา</button>'+
+      (otOn()
+        ? '<div class="sec"><h4>คำขอ OT</h4>'+otList()+'</div>'+
+          (otCanSubmitToday()
+            ? '<button class="btn-dark" onclick="openOtForm()">'+svgI('zap',{size:16})+
+              ' ยื่นขอทำ OT</button>'
+            : '')
+        : '')+
+      '<div class="sec"><h4>คำขอแก้เวลา</h4><div id="teList"></div></div>'+
+      '<button class="btn-out" onclick="openTimeEditForm()">'+svgI('edit',{size:16})+
+        ' ขอแก้ไขเวลา (ลืมเช็คเอาท์)</button>'+
+    '</div>'+
 
     '<div class="page" id="pg_holiday">'+
       '<div class="sec"><h4>ปฏิทินวันหยุด</h4><div id="empCal"></div>'+
@@ -201,6 +219,7 @@ function renderHome(){
       '</div></div>'+
     '</div>';
   bindSlider(a);
+  fillRequests();
   tick();
 }
 function stCell(icon,color,val,label){return '<div class="st"><span class="ic" style="color:'+color+
@@ -245,7 +264,8 @@ function stateArea(a){
     return '<div class="statebox done">'+
       '<div class="sb-badge gray">'+svgI('check',{size:15})+' ทำงานครบแล้ววันนี้</div>'+
       '<div class="sb-grid">'+kv('เวลาเข้างาน',a.checkInTime)+kv('เวลาออกงาน',a.checkOutTime)+'</div>'+
-      '<div class="sb-total">รวมเวลาทำงานวันนี้ <b>'+fmtDur(a)+'</b></div>'+
+      '<div class="sb-total">เวลาทำงานปกติ <b>'+fmtDur(a)+'</b></div>'+
+      otSummaryBox(a)+
     '</div>'+slideDisabled('เช็คอินครบแล้ววันนี้');
 
   // กำลังทำงาน → กล่องสถานะ + สไลด์ออกงาน (ส้ม)
@@ -258,15 +278,41 @@ function stateArea(a){
         (a.status==='late'?' <span class="late-tag">มาสาย</span>':'')+'</div>'+
     '</div>'+slideCtl('out','orange','เลื่อนเพื่อออกงาน','logout','ลากปุ่มไปทางขวาจนสุดเพื่อออกงาน');
 
-  // วันหยุด → สไลด์เทา กันเช็คอิน
-  if(CTX.todayHoliday)
-    return '<div class="statebox holiday">'+
+  /* ---- วันหยุด ----
+   * เดิมปิดตายทุกกรณี ตอนนี้ขึ้นกับนโยบาย OT:
+   *   ทำงานวันหยุดได้        -> สไลด์เขียวตามปกติ + เตือนว่านับเป็น OT
+   *   ต้องมีใบอนุมัติก่อน     -> สไลด์เทา + ปุ่มลัดไปยื่นใบ
+   *   ห้ามทำงานวันหยุด       -> สไลด์เทา (เหมือนเดิม)
+   */
+  if(CTX.todayHoliday){
+    var c=otCfg();
+    var head='<div class="statebox holiday">'+
       '<div class="sb-badge gray">'+svgI('flag',{size:15})+' วันนี้เป็นวันหยุด</div>'+
       '<div class="sb-note">'+esc(CTX.todayHolidayName||'วันหยุดประจำสัปดาห์')+'</div>'+
-    '</div>'+slideDisabled('วันหยุด — เช็คอินไม่ได้');
+      otHolidayHint()+
+    '</div>';
+
+    if(!otOn() || !c.allowHolidayWork)
+      return head+slideDisabled('วันหยุด — เช็คอินไม่ได้');
+
+    if(c.holidayNeedsRequest && !otHasApprovedToday())
+      return head+slideDisabled('ต้องได้รับอนุมัติก่อน')+
+        '<button class="btn-dark" onclick="openOtForm()">'+svgI('zap',{size:16})+
+        ' ขออนุมัติทำงานวันหยุด</button>';
+
+    return head+slideCtl('in','green','เลื่อนเพื่อเข้างาน','login',
+      'ลากปุ่มไปทางขวาจนสุด — วันนี้นับเป็น OT');
+  }
 
   // วันทำงานปกติ ยังไม่เช็คอิน → สไลด์เข้างาน (เขียว) เปิดตั้งแต่ 00:00
   return slideCtl('in','green','เลื่อนเพื่อเข้างาน','login','ลากปุ่มไปทางขวาจนสุดเพื่อเข้างาน');
+}
+
+/** วันนี้มีใบ OT ที่อนุมัติแล้วหรือยัง (ใช้ปลดล็อกการเช็คอินวันหยุด) */
+function otHasApprovedToday(){
+  return (CTX.myOt||[]).some(function(r){
+    return r.date===CTX.today && r.status==='approved';
+  });
 }
 
 /* ---- แถบสไลด์: ลากปุ่มจนสุดจึงทำงาน ---- */
@@ -337,6 +383,12 @@ function handleFail(r,kind){
       'คุณอยู่ห่างจากจุดเช็คอิน '+r.distance+' เมตร (อนุญาตไม่เกิน '+r.radius+' เมตร) กรุณาเข้าใกล้แล้วลองใหม่',
       'error', renderHome);
   else if(r.reason==='holiday'){ showAlert('วันนี้เป็นวันหยุด',(r.holidayName||'')+' — ไม่สามารถเช็คอินได้','info', loadCtx); }
+  else if(r.reason==='holiday_needs_request'){
+    // ปุ่มลัดไปยื่นใบขอทำงานวันหยุด แทนที่จะให้ผู้ใช้ไปหาเอง
+    showAlert('ต้องได้รับอนุมัติก่อน',
+      'วันนี้เป็นวันหยุด — ต้องได้รับอนุมัติ OT ก่อนจึงจะเช็คอินได้','info',
+      function(){ loadCtx(); setTimeout(function(){ openOtForm(); },250); });
+  }
   else if(r.reason==='already_in'){ showAlert('เช็คอินซ้ำ','คุณได้เช็คอินไปแล้ววันนี้','info', loadCtx); }
   else if(r.reason==='already_out'){ showAlert('เช็คเอาท์ซ้ำ','คุณได้เช็คเอาท์ไปแล้ววันนี้','info', loadCtx); }
   else if(r.reason==='no_checkin'){ showAlert('ยังไม่ได้เช็คอิน','กรุณาเช็คอินก่อนเช็คเอาท์','info', loadCtx); }
@@ -409,6 +461,10 @@ function loadHistory(){
     (a.status==='late'?'สาย':'ปกติ')+'</span></div>')
     :'<div class="empty">วันนี้ยังไม่มีการเช็คอิน</div>';
   $('histList').innerHTML=html;
+}
+
+/** เติมรายการคำขอแก้เวลาในแท็บ "คำขอ" (ย้ายมาจากแท็บประวัติ) */
+function fillRequests(){
   if($('teList')) $('teList').innerHTML=timeEditList();
 }
 

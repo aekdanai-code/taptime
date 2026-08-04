@@ -1,0 +1,144 @@
+<script>
+/* ============================================================
+ * EmployeeOt — OT ฝั่งพนักงาน
+ *
+ * โหมด off / admin_only  -> ซ่อนทุกอย่างที่เกี่ยวกับ OT
+ * ยื่นใบได้เมื่อ  ot.canRequest = true  (request_before / request_after)
+ * ใบ "ขอทำงานวันหยุด" ยื่นได้ทุกโหมด ยกเว้น off — ไม่งั้นจะเช็คอินวันหยุดไม่ได้
+ * ============================================================ */
+
+function otCfg(){ return (CTX && CTX.ot) || {enabled:false,canRequest:false}; }
+function otOn(){ return !!otCfg().enabled; }
+
+function otMinTxt(m){
+  m=Math.max(0,Math.round(Number(m)||0));
+  var H=Math.floor(m/60), M=m%60;
+  return H?(H+' ชม. '+(M?M+' นาที':'')):(M+' นาที');
+}
+function otKindTxt(k){return ({after_shift:'OT หลังเลิกงาน',before_shift:'OT ก่อนเข้างาน',
+  holiday_work:'ทำงานวันหยุด'})[k]||'OT';}
+function otBadge(s){
+  var b={pending:'b-pending',approved:'b-approved',rejected:'b-rejected',
+         cancelled:'b-rejected'}[s]||'b-pending';
+  var t={pending:'รออนุมัติ',approved:'อนุมัติแล้ว',rejected:'ปฏิเสธ',
+         cancelled:'ยกเลิกแล้ว'}[s]||s;
+  return '<span class="badge '+b+'">'+t+'</span>';
+}
+
+/* ---- กล่อง OT ในกล่องสรุปหลังเช็คเอาท์ ---- */
+function otSummaryBox(a){
+  if(!otOn() || !a) return '';
+  var m=Math.max(0,Number(a.otMinutes)||0);
+  var raw=Math.max(0,Number(a.otMinutesRaw)||0);
+  if(!m && !raw) return '';
+
+  var st=String(a.otStatus||'none');
+  var tag = st==='approved' ? '<span class="ot-tag ok">นับแล้ว</span>'
+          : st==='pending'  ? '<span class="ot-tag wait">รออนุมัติ</span>'
+          : '<span class="ot-tag off">ยังไม่นับ</span>';
+
+  var note='';
+  if(a.otNote==='cross_midnight_unsupported')
+    note='<div class="ot-note">ระบบไม่รองรับกะข้ามคืน — กรุณายื่นคำขอแก้เวลาให้แอดมินบันทึกให้</div>';
+  else if(st!=='approved' && raw>m && m===0)
+    note='<div class="ot-note">ทำเกินเวลา '+otMinTxt(raw)+' แต่ยังไม่ถึงเกณฑ์ที่นับเป็น OT</div>';
+
+  return '<div class="ot-box"><div class="ot-line">'+
+    '<span class="ot-k">ล่วงเวลา (OT)</span>'+
+    '<span class="ot-v">'+otMinTxt(st==='approved'||st==='pending'?m:0)+'</span>'+tag+
+    '</div>'+note+'</div>';
+}
+
+/* ---- แถบเตือนตอนเป็นวันหยุด ---- */
+function otHolidayHint(){
+  var c=otCfg();
+  if(!otOn() || !CTX.todayHoliday || !c.allowHolidayWork) return '';
+  var all=c.holidayCountsAllHours;
+  return '<div class="ot-hint">'+svgI('zap',{size:16})+' วันนี้เป็นวันหยุด — '+
+    (all?'เช็คอินจะนับเป็น OT ทั้งวัน':'เช็คอินจะนับ OT เฉพาะส่วนที่เกินเวลาเลิกงาน')+'</div>';
+}
+
+/* ---- รายการใบขอ OT ของฉัน ---- */
+function otList(){
+  if(!otOn()) return '';
+  var arr=(CTX.myOt||[]);
+  if(!arr.length) return '<div class="empty">ยังไม่มีรายการ OT</div>';
+  return arr.map(function(r){
+    var mins = r.minutesApproved==null ? r.minutesRequested : r.minutesApproved;
+    var time = (r.actualStart||r.plannedStart||'') && (r.actualEnd||r.plannedEnd||'')
+      ? (r.actualStart||r.plannedStart)+' – '+(r.actualEnd||r.plannedEnd) : '';
+    return '<div class="row"><div class="ic">'+svgI('zap',{size:18})+'</div><div class="grow">'+
+      '<div class="t">'+esc(otKindTxt(r.kind))+'</div>'+
+      '<div class="s">'+esc(fmtDate(r.date))+(time?' · '+esc(time):'')+
+        ' · '+esc(otMinTxt(mins))+'</div>'+
+      (r.adminNote?'<div class="s">หมายเหตุ: '+esc(r.adminNote)+'</div>':'')+
+      '</div>'+
+      '<div style="text-align:right">'+otBadge(r.status)+
+        (r.status==='pending'
+          ? '<div><span class="lnk-cancel" onclick="otCancel(\''+esc(r.otId)+'\')">ยกเลิก</span></div>'
+          : '')+
+      '</div></div>';
+  }).join('');
+}
+
+/* ---- ฟอร์มยื่นขอ OT ---- */
+function otCanSubmitToday(){
+  var c=otCfg();
+  if(!otOn()) return false;
+  if(CTX.todayHoliday && c.allowHolidayWork) return true;   // ใบขอทำงานวันหยุด
+  return !!c.canRequest;
+}
+
+function openOtForm(preDate){
+  var c=otCfg();
+  if(!otOn()){ toast('ระบบ OT ปิดอยู่'); return; }
+  var d = preDate || CTX.today;
+  var holidayToday = CTX.todayHoliday && d===CTX.today;
+  var isHolidayReq = holidayToday && c.allowHolidayWork;
+
+  if(!isHolidayReq && !c.canRequest){
+    showAlert('ยื่นคำขอไม่ได้',
+      'ผู้ดูแลระบบเป็นผู้บันทึก OT ให้ — ไม่ต้องยื่นคำขอ','info');
+    return;
+  }
+
+  openSheet(
+    '<h3>'+(isHolidayReq?'ขอทำงานในวันหยุด':'ยื่นขอทำ OT')+'</h3>'+
+    (isHolidayReq
+      ? '<p class="sh-sub">ต้องได้รับอนุมัติก่อนจึงจะเช็คอินในวันหยุดได้</p>'
+      : '')+
+    '<label>วันที่</label><input type="date" id="ot_d" value="'+esc(d)+'">'+
+    '<div style="display:flex;gap:10px">'+
+      '<div style="flex:1"><label>เวลาเริ่ม</label><input type="time" id="ot_s" value="'+
+        esc(isHolidayReq?(CTX.branch.workStart||'08:00'):(CTX.branch.workEnd||'17:00'))+'"></div>'+
+      '<div style="flex:1"><label>เวลาสิ้นสุด</label><input type="time" id="ot_e" value="'+
+        esc(isHolidayReq?(CTX.branch.workEnd||'17:00'):'20:00')+'"></div>'+
+    '</div>'+
+    '<div class="sh-note">ระบบไม่รองรับกะข้ามคืน — เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มภายในวันเดียวกัน</div>'+
+    '<label>เหตุผล</label><textarea id="ot_r" rows="3" placeholder="เช่น ปิดยอดสิ้นเดือน"></textarea>'+
+    '<button class="btn-dark" onclick="submitOt('+(isHolidayReq?'true':'false')+')">ส่งคำขอ</button>'
+  );
+}
+
+function submitOt(isHolidayReq){
+  var payload={
+    date: $('ot_d').value,
+    plannedStart: $('ot_s').value,
+    plannedEnd: $('ot_e').value,
+    reason: ($('ot_r').value||'').trim()
+  };
+  if(isHolidayReq) payload.kind='holiday_work';
+  if(!payload.date||!payload.plannedStart||!payload.plannedEnd){
+    toast('กรุณากรอกวันที่และเวลาให้ครบ'); return;
+  }
+  run('empSubmitOtRequest',TOKEN,payload).then(function(){
+    closeSheet(); toast('ส่งคำขอแล้ว'); loadCtx();
+  }).catch(function(e){ showAlert('ส่งคำขอไม่สำเร็จ',e.message||e,'error'); });
+}
+
+function otCancel(otId){
+  run('empCancelOtRequest',TOKEN,otId).then(function(){
+    toast('ยกเลิกคำขอแล้ว'); loadCtx();
+  }).catch(function(e){ showAlert('ยกเลิกไม่สำเร็จ',e.message||e,'error'); });
+}
+</script>

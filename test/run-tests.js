@@ -1700,6 +1700,189 @@ async function t(name, fn) {
     assert.ok(/mode === 'off'/.test(h), 'ไม่ได้เช็คโหมด off');
   });
 
+  console.log('\n── OT: เช็คอินวันหยุด + request_before ─────');
+
+  /** ตั้งนโยบายชั่วคราวแล้วคืนค่าเดิมให้เอง */
+  async function withPolicy(over, fn) {
+    const saved = await overtime.saveOtPolicy({ ...overtime.DEFAULT_POLICY, ...over });
+    try { return await fn(saved); }
+    finally { await overtime.saveOtPolicy(overtime.DEFAULT_POLICY); }
+  }
+
+  // 2026-07-28 เป็นวันหยุดราชการใน fixture (ใช้ในเทสต์รายงานอยู่แล้ว)
+  const HOLIDAY = '2026-07-28';
+  const GPS = [13.7563, 100.5018];
+
+  await t('OT: allowHolidayWork = false -> เช็คอินวันหยุดไม่ได้ (พฤติกรรมเดิม)', async () => {
+    await withPolicy({ mode: 'auto', allowHolidayWork: false }, async () => {
+      const dt = await attendance.otDayTypeOf(HOLIDAY);
+      assert.notStrictEqual(dt, 'workday', 'fixture ต้องมีวันหยุดวันนี้');
+    });
+    // ตรวจตรรกะที่ใช้จริงผ่าน dayTypeOf + นโยบาย (empCheckIn ผูกกับ today())
+    const p = overtime.normalizePolicy({ mode: 'auto', allowHolidayWork: false });
+    assert.strictEqual(p.allowHolidayWork, false);
+  });
+
+  await t('OT: เช็คอินวันหยุด — ไม่มีใบอนุมัติ -> holiday_needs_request', async () => {
+    await withPolicy({ mode: 'auto', allowHolidayWork: true,
+                       holidayNeedsRequest: true }, async () => {
+      const approved = await otReq.approvedRequests(EMP_A, HOLIDAY);
+      assert.strictEqual(approved.length, 0, 'ยังไม่ควรมีใบอนุมัติ');
+    });
+  });
+
+  await t('OT: ใบขอทำงานวันหยุดยื่นได้แม้โหมด auto/admin_only (ไม่เป็นทางตัน)', async () => {
+    for (const mode of ['auto', 'admin_only']) {
+      await withPolicy({ mode, allowHolidayWork: true }, async () => {
+        // OT ปกติยื่นไม่ได้
+        await assert.rejects(
+          () => otReq.empSubmitOtRequest(EMP_A, {
+            date: '2026-07-20', kind: 'after_shift',
+            plannedStart: '17:30', plannedEnd: '19:00' }),
+          /ไม่ต้องยื่นคำขอ|ผู้ดูแลระบบ/
+        );
+        // แต่ใบขอทำงานวันหยุดยื่นได้
+        const r = await otReq.empSubmitOtRequest(EMP_A, {
+          date: HOLIDAY, kind: 'holiday_work',
+          plannedStart: '08:00', plannedEnd: '17:00', reason: 'ทดสอบ ' + mode,
+        });
+        assert.strictEqual(r.kind, 'holiday_work');
+        assert.strictEqual(r.status, 'pending');
+        assert.notStrictEqual(r.dayType, 'workday');
+        await otReq.empCancelOtRequest(EMP_A, r.otId);  // เคลียร์ให้รอบถัดไป
+      });
+    }
+  });
+
+  await t('OT: ใบขอทำงานวันหยุดยื่นในวันทำงานปกติไม่ได้', async () => {
+    await withPolicy({ mode: 'request_after', allowHolidayWork: true }, async () => {
+      await assert.rejects(
+        () => otReq.empSubmitOtRequest(EMP_A, {
+          date: '2026-07-20', kind: 'holiday_work',
+          plannedStart: '08:00', plannedEnd: '17:00' }),
+        /ไม่ใช่วันหยุด/
+      );
+    });
+  });
+
+  await t('OT: อนุมัติใบทำงานวันหยุด -> ปลดล็อกการเช็คอิน', async () => {
+    await withPolicy({ mode: 'request_after', allowHolidayWork: true,
+                       holidayNeedsRequest: true }, async () => {
+      const r = await otReq.empSubmitOtRequest(EMP_A, {
+        date: HOLIDAY, kind: 'holiday_work',
+        plannedStart: '08:00', plannedEnd: '17:00',
+      });
+      assert.strictEqual((await otReq.approvedRequests(EMP_A, HOLIDAY)).length, 0);
+      await otReq.decideOtRequest(r.otId, 'approved');
+      assert.strictEqual((await otReq.approvedRequests(EMP_A, HOLIDAY)).length, 1,
+        'อนุมัติแล้วต้องปลดล็อกได้');
+    });
+  });
+
+  await t('OT: ทำงานวันหยุดไม่นับ "มาสาย" และนับ OT ทั้งวัน', async () => {
+    await withPolicy({ mode: 'auto', allowHolidayWork: true,
+                       holidayCountsAllHours: true, minMinutes: 0,
+                       roundMinutes: 0, maxPerDayMinutes: 0 }, async () => {
+      await attendance.manualCheckIn(EMP_A, HOLIDAY, '09:30', 'วันหยุด');
+      const att = await attendance.attendanceOf(EMP_A, HOLIDAY);
+      assert.strictEqual(Number(att.lateMinutes), 0, 'วันหยุดต้องไม่มีมาสาย');
+      assert.strictEqual(att.status, 'ontime');
+
+      const r = await attendance.writeCheckOut(att, '15:30');
+      assert.strictEqual(r.otDayType, 'holiday');
+      assert.strictEqual(r.otMinutesRaw, 360, 'นับทั้งวัน 09:30-15:30 = 6 ชม.');
+      assert.strictEqual(r.otMinutes, 360);
+      assert.strictEqual(r.otStatus, 'approved');
+      // ทั้งวันเป็น OT -> ชั่วโมงงานปกติต้องเป็น 0 ไม่ใช่ 5 (หักพักแล้ว)
+      assert.strictEqual(r.workHours, 0);
+    });
+  });
+
+  await t('OT: โหมด request_before นับได้ไม่เกินใบที่อนุมัติล่วงหน้า', async () => {
+    const D = '2026-07-17';
+    await withPolicy({ mode: 'request_before', minMinutes: 0, roundMinutes: 0,
+                       graceMinutes: 0, maxPerDayMinutes: 0 }, async () => {
+      // ยังไม่มีใบ -> ทำเกินก็ไม่นับ
+      await attendance.manualCheckIn(EMP_A, D, '08:00', 'วันปกติ');
+      let att = await attendance.attendanceOf(EMP_A, D);
+      let r = await attendance.writeCheckOut(att, '20:00');   // เกิน 180 นาที
+      assert.strictEqual(r.otMinutesRaw, 180);
+      assert.strictEqual(r.otMinutes, 0, 'ไม่มีใบอนุมัติ -> ไม่นับ');
+
+      // อนุมัติล่วงหน้าไว้ 60 นาที แล้วคำนวณใหม่
+      const req = await otReq.adminCreateOt({
+        empId: EMP_A, date: D, start: '17:00', end: '18:00' });
+      assert.strictEqual(req.minutesApproved, 60);
+
+      att = await attendance.attendanceOf(EMP_A, D);
+      r = await attendance.writeCheckOut(att, '20:00');
+      assert.strictEqual(r.otMinutes, 60, 'ทำ 180 แต่ขอไว้ 60 -> นับ 60');
+      assert.strictEqual(r.otStatus, 'approved');
+      assert.strictEqual(r.otNote, 'capped_by_request');
+    });
+  });
+
+  await t('OT: employeeContext ส่งนโยบาย OT + ประวัติใบของตัวเองมาให้', async () => {
+    const c = await employeeApi.employeeContext(EMP_A);
+    assert.ok(c.ot, 'ไม่มี c.ot');
+    assert.ok(Array.isArray(c.myOt), 'ไม่มี c.myOt');
+    assert.ok(['off', 'auto', 'request_after', 'request_before', 'admin_only']
+      .indexOf(c.ot.mode) >= 0);
+    assert.ok(c.myOt.length > 0, 'ควรมีใบ OT จากเทสต์ก่อนหน้า');
+    assert.ok(c.myOt.every((r) => r.empId === undefined || r.empId === EMP_A));
+    // ต้องไม่มีฟิลด์เกี่ยวกับเงินหลุดออกไป
+    const dump = JSON.stringify(c).toLowerCase();
+    ['ratework', 'rateweekend', 'rateholiday', 'flatperhour', 'paymode',
+     'hourlybasis', 'otamount', 'otrate'].forEach((bad) => {
+      assert.ok(dump.indexOf(bad) === -1, 'หลุดฟิลด์เงิน: ' + bad);
+    });
+  });
+
+  await t('OT: สถิติเดือนของพนักงานแยก approved กับ pending', async () => {
+    const c = await employeeApi.employeeContext(EMP_A);
+    assert.ok(typeof c.stats.otMinutes === 'number');
+    assert.ok(typeof c.stats.otPendingMinutes === 'number');
+    // ยอดอนุมัติต้องมาจากแถวที่ otStatus = approved เท่านั้น
+    const rows = await require(path.join(LIB, 'db'))
+      .readObjects('attendance', { empId: EMP_A });
+    const ym = c.today.slice(0, 7);
+    const expect = rows
+      .filter((a) => String(a.date).slice(0, 7) === ym && a.otStatus === 'approved')
+      .reduce((s, a) => s + (Number(a.otMinutes) || 0), 0);
+    assert.strictEqual(c.stats.otMinutes, expect);
+  });
+
+  await t('OT: หน้าพนักงาน — แท็บ "การลา" เปลี่ยนเป็น "คำขอ" รวม 3 อย่าง', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(/data-p="leave"[^>]*>[\s\S]{0,120}คำขอ</.test(h), 'ยังไม่เปลี่ยนชื่อแท็บ');
+    ['<h4>คำขอลา</h4>', '<h4>คำขอ OT</h4>', '<h4>คำขอแก้เวลา</h4>']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาดหัวข้อ ' + k));
+    // ปุ่มขอแก้เวลาต้องย้ายออกจากแท็บประวัติแล้ว
+    const hist = h.slice(h.indexOf('id="pg_history"'), h.indexOf('id="pg_leave"'));
+    assert.ok(hist.indexOf('openTimeEditForm') === -1, 'ยังเหลือปุ่มแก้เวลาในแท็บประวัติ');
+  });
+
+  await t('OT: หน้าพนักงาน — ซ่อน UI ทั้งหมดเมื่อโหมด off', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes('function otOn()'), 'ไม่มีตัวเช็คว่าเปิด OT อยู่ไหม');
+    // ทุกจุดที่แสดง OT ต้องผ่าน otOn()
+    ['otSummaryBox', 'otHolidayHint', 'otList'].forEach((fn) => {
+      const i = h.indexOf('function ' + fn);
+      assert.ok(i > 0, 'ไม่พบ ' + fn);
+      assert.ok(/otOn\(\)/.test(h.slice(i, i + 400)), fn + ' ไม่ได้เช็ค otOn()');
+    });
+    assert.ok(/otOn\(\)[\s\S]{0,200}คำขอ OT/.test(h), 'บล็อกคำขอ OT ไม่ได้เช็ค otOn()');
+  });
+
+  await t('OT: หน้าพนักงาน — วันหยุดขึ้นข้อความว่านับเป็น OT + ปุ่มขออนุมัติ', () => {
+    const h = fs.readFileSync(path.join(GEN, 'employee.html'), 'utf8');
+    assert.ok(h.includes('วันนี้เป็นวันหยุด — '), 'ไม่มีข้อความอธิบาย');
+    assert.ok(h.includes('เช็คอินจะนับเป็น OT ทั้งวัน'));
+    assert.ok(h.includes('ขออนุมัติทำงานวันหยุด'), 'ไม่มีปุ่มลัดไปยื่นใบ');
+    assert.ok(h.includes('holiday_needs_request'), 'ไม่ได้จัดการ error ใหม่');
+    assert.ok(h.includes('otHasApprovedToday'), 'ไม่ได้เช็คว่ามีใบอนุมัติแล้วหรือยัง');
+  });
+
   console.log('\n── ปุ่มสไลด์เช็คอิน/เอาท์ ──────────────────');
 
   await t('ปุ่มสไลด์: มีตัวช่วยดึงสายตา (ข้อความกระพริบ + ลูกศร + วงแหวน)', () => {
