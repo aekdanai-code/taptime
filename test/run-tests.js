@@ -1883,6 +1883,128 @@ async function t(name, fn) {
     assert.ok(h.includes('otHasApprovedToday'), 'ไม่ได้เช็คว่ามีใบอนุมัติแล้วหรือยัง');
   });
 
+  console.log('\n── OT: รายงาน + Excel ─────────────────────');
+
+  await t('OT: รายงานรายวันมีคอลัมน์ OT แยก approved / pending', async () => {
+    const r = await reports.dailyReport({ date: HOLIDAY });
+    assert.ok(r.rows.length > 0);
+    r.rows.forEach((row) => {
+      assert.ok(typeof row.otMinutes === 'number', 'ขาด otMinutes');
+      assert.ok(typeof row.otPendingMinutes === 'number', 'ขาด otPendingMinutes');
+      // แถวหนึ่งจะอยู่ได้แค่ช่องเดียว ห้ามนับซ้ำ
+      assert.ok(!(row.otMinutes > 0 && row.otPendingMinutes > 0),
+        'OT ถูกนับทั้งสองช่องพร้อมกัน');
+    });
+    const sumApproved = r.rows.reduce((s, x) => s + x.otMinutes, 0);
+    assert.strictEqual(r.sum.otMinutes, sumApproved);
+    assert.ok(r.sum.otMinutes > 0, 'วันหยุดที่มีคนทำงานต้องมี OT');
+  });
+
+  await t('OT: รายงานเดือนสรุปยอด OT ต่อคน (นับวันหยุดที่มาทำงานด้วย)', async () => {
+    const r = await reports.monthlyReport({ start: '2026-07-01', end: '2026-07-31' });
+    const mine = r.rows.filter((x) => x.empId === EMP_A)[0];
+    assert.ok(mine, 'ไม่พบพนักงานในรายงาน');
+    assert.ok(typeof mine.sum.otMinutes === 'number');
+    assert.ok(typeof mine.sum.otPendingMinutes === 'number');
+    assert.ok(mine.sum.otMinutes > 0, 'ควรมี OT ที่อนุมัติแล้วจากเทสต์ก่อนหน้า');
+
+    // ยอดในรายงานเดือนต้องตรงกับ otSummary (แหล่งข้อมูลเดียวกัน)
+    const s = await otReq.otSummary({ start: '2026-07-01', end: '2026-07-31' });
+    const row = s.rows.filter((x) => x.empId === EMP_A)[0];
+    assert.strictEqual(mine.sum.otMinutes, row.approvedMinutes,
+      'รายงานเดือนกับรายงาน OT ให้ตัวเลขไม่ตรงกัน');
+
+    // วันหยุดที่มาทำงานต้องมีสถานะแยก ไม่ใช่ "หยุด" เฉย ๆ
+    const idx = r.days.indexOf(HOLIDAY);
+    assert.ok(idx >= 0);
+    assert.strictEqual(mine.cells[idx].status, 'otholiday');
+  });
+
+  await t('OT: ไฟล์ Excel มีคอลัมน์ OT', async () => {
+    const XLSX = require('xlsx');
+    const out = await reports.exportMonthlyReportXlsx({
+      start: '2026-07-01', end: '2026-07-31' });
+    assert.ok(out.b64 && out.b64.length > 100);
+    const wb = XLSX.read(out.b64, { type: 'base64' });
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+    const head = aoa[0];
+    assert.ok(head.indexOf('OT (ชม.)') >= 0, 'ไม่มีคอลัมน์ OT ในไฟล์ Excel');
+    assert.ok(head.indexOf('OT รออนุมัติ (ชม.)') >= 0, 'ไม่มีคอลัมน์ OT รออนุมัติ');
+    // ค่าที่เขียนลงไฟล์ต้องเป็นชั่วโมง ไม่ใช่นาที
+    const col = head.indexOf('OT (ชม.)');
+    const mine = aoa.slice(1).filter((r) => String(r[0]).indexOf('เอกดนัย') >= 0)[0];
+    assert.ok(mine, 'ไม่พบแถวพนักงานในไฟล์');
+    const s = await otReq.otSummary({ start: '2026-07-01', end: '2026-07-31' });
+    const expect = Math.round((s.rows.filter((x) => x.empId === EMP_A)[0]
+      .approvedMinutes / 60) * 100) / 100;
+    assert.strictEqual(mine[col], expect);
+  });
+
+  await t('OT: รายงาน OT แยกตามประเภทวัน + ปุ่มคัดลอกตาราง', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['renderOtReport', 'otSummary', 'data-tab="otreport"',
+     'otreport:renderOtReport', 'คัดลอกตาราง', 'copyOtReport']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+    ['<th>วันทำงาน</th>', '<th>วันหยุดสัปดาห์</th>', '<th>วันหยุดราชการ</th>',
+     '<th>รวม (อนุมัติแล้ว)</th>', '<th>รออนุมัติ</th>']
+      .forEach((k) => assert.ok(h.includes(k), 'ขาดคอลัมน์ ' + k));
+  });
+
+  await t('OT: หน้าลงเวลาแสดง ดิบ/นับได้/สถานะ + ปุ่มคีย์ OT (โหมด admin_only)', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    ['function otCell', 'otMinutesRaw', 'OT (ดิบ / นับได้)',
+     'openAdminOt', 'adminCreateOt', "mode==='admin_only'"]
+      .forEach((k) => assert.ok(h.includes(k), 'ขาด ' + k));
+  });
+
+  await t('OT: ทุกหน้ารายงานซ่อนคอลัมน์ OT เมื่อปิดระบบ', () => {
+    const h = fs.readFileSync(path.join(GEN, 'admin.html'), 'utf8');
+    // ทุกคอลัมน์ OT ต้องผูกกับ otEnabled()
+    ['OT (ดิบ / นับได้)', 'OT (นับได้)', 'OT (ชม.)']
+      .forEach((label) => {
+        const i = h.indexOf(label);
+        assert.ok(i > 0, 'ไม่พบคอลัมน์ ' + label);
+        assert.ok(/otEnabled\(\)/.test(h.slice(Math.max(0, i - 200), i)),
+          'คอลัมน์ ' + label + ' ไม่ได้เช็ค otEnabled()');
+      });
+    assert.ok(h.includes('function otEnabled'), 'ไม่มีฟังก์ชัน otEnabled');
+  });
+
+  await t('OT: ไม่มีโค้ดใดอ่าน/เขียนคอลัมน์ฝั่งการจ่าย (ตรวจทั้งโปรเจกต์)', () => {
+    const PAY = ['otRate', 'otAmount', 'otPaid', 'rateUsed', 'payMode',
+                 'hourlyBasis', 'customHourly', 'rateWorkday', 'rateWeekend',
+                 'rateHoliday', 'flatPerHour', 'flatPerSession',
+                 'showAmountToEmployee'];
+    const walk = (dir) => {
+      const out = [];
+      for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (f.name === 'node_modules' || f.name.startsWith('.')) continue;
+        const full = path.join(dir, f.name);
+        if (f.isDirectory()) out.push(...walk(full));
+        else if (/\.(ts|js|html)$/.test(f.name)) out.push(full);
+      }
+      return out;
+    };
+    const root = path.join(__dirname, '..');
+    const files = [...walk(path.join(root, 'lib')),
+                   ...walk(path.join(root, 'src')),
+                   ...walk(path.join(root, 'app'))];
+    const hits = [];
+    for (const f of files) {
+      let txt = fs.readFileSync(f, 'utf8');
+      // lib/db.ts มีชื่อคอลัมน์เหล่านี้ใน NUMERIC_COLS ซึ่งเป็นแค่ "รายการแปลงชนิดข้อมูล"
+      // ไม่ใช่การอ่าน/เขียนค่า — ตัดบล็อกนั้นออกก่อนตรวจ
+      if (f.endsWith(path.join('lib', 'db.ts'))) {
+        txt = txt.replace(/const NUMERIC_COLS[\s\S]*?\]\);/, '');
+      }
+      for (const col of PAY) {
+        if (txt.indexOf(col) >= 0) hits.push(path.relative(root, f) + ' -> ' + col);
+      }
+    }
+    assert.deepStrictEqual(hits, [],
+      'เฟสนี้ยังไม่ควรมีโค้ดแตะคอลัมน์ฝั่งการจ่าย:\n' + hits.join('\n'));
+  });
+
   console.log('\n── ปุ่มสไลด์เช็คอิน/เอาท์ ──────────────────');
 
   await t('ปุ่มสไลด์: มีตัวช่วยดึงสายตา (ข้อความกระพริบ + ลูกศร + วงแหวน)', () => {

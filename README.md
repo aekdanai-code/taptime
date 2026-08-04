@@ -1,9 +1,9 @@
-# TapTime V1.2 — Web App (Next.js + Supabase)
+# TapTime V1.3 — Web App (Next.js + Supabase)
 
 ระบบลงเวลาเข้า-ออกงานด้วย GPS — แปลงมาจาก **Google Apps Script + Google Sheets** (V1.1)
 มาเป็นเว็บแอปจริงที่รันบน **Next.js + Supabase (PostgreSQL) + Vercel**
 
-**เวอร์ชันปัจจุบัน: 1.2.0** — สรุปทุกอย่างที่เปลี่ยนอยู่ใน [CHANGELOG.md](CHANGELOG.md)
+**เวอร์ชันปัจจุบัน: 1.3.0** — สรุปทุกอย่างที่เปลี่ยนอยู่ใน [CHANGELOG.md](CHANGELOG.md)
 
 > **ตอนย้ายระบบ UI ถูกยกมาทั้งดุ้นโดยไม่แก้แม้แต่บรรทัดเดียว**
 > ต่อมาจึงมีการปรับหน้าจอตามที่ร้องขอเพิ่มเติม (ดูข้อ 4.7)
@@ -47,11 +47,13 @@ taptime-web/
 │       ├── reports.ts            <- Reports.gs
 │       ├── invite.ts             อีเมลเชิญตั้งรหัสผ่าน (ของใหม่)
 │       ├── leaveAssign.ts        สิทธิ์การลารายคน + โควตาเฉพาะราย (ของใหม่)
-│       └── notifications.ts      แจ้งเตือนในแอป (ของใหม่)
+│       ├── notifications.ts      แจ้งเตือนในแอป (ของใหม่)
+│       ├── overtime.ts           แกนคำนวณ OT — computeOt() เป็น pure function (ของใหม่)
+│       └── otRequests.ts         ใบขอ/ใบอนุมัติ OT (ของใหม่)
 │
 ├── src/                          ไฟล์ frontend (HTML/CSS/JS แบบเดิม)
-│   ├── frontend-admin/           Admin*.html  (11 ไฟล์)
-│   ├── frontend-employee/        Employee*.html (6 ไฟล์)
+│   ├── frontend-admin/           Admin*.html  (14 ไฟล์)
+│   ├── frontend-employee/        Employee*.html (7 ไฟล์)
 │   ├── shim.html                 สะพาน google.script.run -> /api/rpc + กันกดซ้ำ
 │   └── notify.html               กระดิ่งแจ้งเตือน + badge + เสียง
 │
@@ -69,11 +71,12 @@ taptime-web/
 ├── test/                         ชุดทดสอบ (npm test)
 │
 └── supabase/
-    ├── schema.sql                โครงสร้างตาราง 11 ตาราง
+    ├── schema.sql                โครงสร้างตาราง 15 ตาราง
     ├── seed.sql                  ข้อมูลเดิมจาก TapTime.xlsx
     ├── migration-002-*.sql       passkey + audit log
     ├── migration-003-*.sql       ฟิลด์พนักงานใหม่ + สิทธิ์การลารายคน
-    └── migration-004-*.sql       แจ้งเตือน + เกณฑ์หักเวลาพัก
+    ├── migration-004-*.sql       แจ้งเตือน + เกณฑ์หักเวลาพัก
+    └── migration-005-*.sql       ระบบ OT (นโยบาย + ใบขอ + คอลัมน์ OT)
 ```
 
 ---
@@ -87,7 +90,7 @@ taptime-web/
 | `Positions`        | `positions`          | |
 | `LeaveTypes`       | `leave_types`        | เพิ่ม `showQuota`, `assignAll` |
 | **`Employees`**    | **`profiles`**       | เพิ่ม `authUserId`, `webauthnExempt`, `nickname`, `nationality`, `invitedAt`, `lastLoginAt` |
-| `Attendance`       | `attendance`         | เพิ่ม unique (`empId`,`date`) |
+| `Attendance`       | `attendance`         | เพิ่ม unique (`empId`,`date`) + คอลัมน์ OT ชุดใหม่ |
 | `LeaveRequests`    | `leave_requests`     | |
 | `Holidays`         | `holidays`           | |
 | `TimeEditRequests` | `time_edit_requests` | |
@@ -95,6 +98,8 @@ taptime-web/
 | *(ใหม่)* | `checkin_audit` | หลักฐานทุกครั้งที่พยายามลงเวลา |
 | *(ใหม่)* | `leave_assignments` | ใครได้สิทธิ์ลาประเภทไหน + โควตาเฉพาะราย |
 | *(ใหม่)* | `notifications` | แจ้งเตือนในแอป (1 แถว = 1 ผู้รับ) |
+| *(ใหม่)* | `ot_policies` | นโยบาย OT (ใช้ทั้งบริษัท มี `isActive` ได้ทีละแถว) |
+| *(ใหม่)* | `ot_requests` | ใบขอ/ใบอนุมัติ OT |
 
 **ชื่อคอลัมน์คงเดิมทุกตัว** (camelCase เช่น `empId`, `checkInTime`) จึงต้อง quote ด้วย `"` ใน SQL
 ผลคือ payload ที่ส่งให้หน้าเว็บมี key เหมือนเดิม → frontend ไม่ต้องแก้
@@ -122,6 +127,7 @@ Supabase Dashboard → **SQL Editor** → **New query**
 > 1. `supabase/migration-002-auth-webauthn.sql` — passkey + audit log
 > 2. `supabase/migration-003-employees-leaves.sql` — ฟิลด์พนักงานใหม่ + สิทธิ์การลารายคน
 > 3. `supabase/migration-004-notify-worktime.sql` — ระบบแจ้งเตือน + เกณฑ์หักเวลาพัก
+> 4. `supabase/migration-005-overtime.sql` — ระบบ OT (นโยบาย + ใบขอ + คอลัมน์ OT)
 
 > ถ้าอยากสร้าง `seed.sql` ใหม่จากไฟล์ xlsx ที่อัปเดตแล้ว:
 > ```bash
@@ -478,6 +484,74 @@ npm run icons        # = python3 scripts/make-icons.py assets/logo-source.png
 
 ---
 
+### 4.9 ระบบ OT (ล่วงเวลา)
+
+> เฟสนี้เก็บ **"ชั่วโมง" อย่างเดียว ยังไม่คิดเป็นเงิน**
+> คอลัมน์ฝั่งการจ่ายถูกสร้างไว้ในฐานข้อมูลแล้ว แต่ **ไม่มีโค้ดใดอ่านหรือเขียน**
+> (มีเทสต์ไล่ทั้งโปรเจกต์คอยกันไว้)
+
+**นโยบายชุดเดียวใช้ทั้งบริษัท** เก็บในตาราง `ot_policies` มีแถวที่ `isActive` ได้ทีละแถวเดียว
+การบันทึกแต่ละครั้ง **สร้างแถวใหม่เสมอ ไม่ทับของเก่า** เพราะทุกแถวลงเวลาเก็บ `otPolicyId` ไว้
+ย้อนหลังจึงตรวจได้ว่าตอนนั้นคิดด้วยกฎอะไร
+
+**5 โหมด** (เมนู "ตั้งค่า OT")
+
+| โหมด | พฤติกรรม |
+|---|---|
+| `off` | ปิดระบบ ซ่อน UI ที่เกี่ยวกับ OT ทั้งสองฝั่ง |
+| `auto` | เช็คเอาท์เกินเวลา → นับให้ทันที ไม่ต้องอนุมัติ |
+| `request_after` | นับให้แต่ขึ้น "รออนุมัติ" + สร้างใบให้แอดมินกดโดยอัตโนมัติ |
+| `request_before` | ต้องอนุมัติล่วงหน้า ทำเกินใบที่ขอจะถูกตัดตามใบ |
+| `admin_only` | พนักงานยื่นไม่ได้ แอดมินคีย์ให้อย่างเดียว |
+
+**ลำดับการคำนวณ — ห้ามสลับ** (`computeOt()` ใน `lib/api/overtime.ts` เป็น pure function)
+
+```
+0    ปิดระบบ                     -> 0
+0.5  กันกะข้ามคืน                 -> เวลาออก <= เวลาเข้า = 0 + note cross_midnight_unsupported
+1    เวลาดิบ                     -> วันหยุด = ทั้งวัน / วันทำงาน = ส่วนที่ "เกิน" ผ่อนผัน
+2    หักพักระหว่าง OT
+3    ปัดเศษ (down / nearest / up)
+4    ขั้นต่ำ                      -> ไม่ถึงเกณฑ์ตัด "ทั้งก้อน" ไม่ใช่ตัดเศษ
+5    เพดาน                       -> วัน -> สัปดาห์ -> เดือน (0 = ไม่จำกัด)
+6    แยกตามโหมด
+```
+
+หน้าตั้งค่ามี **กล่องพรีวิวสด** แสดงผลทีละขั้นด้วยสูตรเดียวกับเซิร์ฟเวอร์
+(กฎ 5 ชั้นซ้อนกันทำให้คนตั้งค่างงง่ายมาก พรีวิวนี้ไม่ใช่ของเสริม)
+
+**ไม่รองรับกะข้ามคืนโดยตั้งใจ** — ระบบยึด "1 คน 1 แถวต่อวัน" และเก็บเวลาเป็น `'HH:mm'`
+ถ้าเวลาออก ≤ เวลาเข้า จะคืน 0 พร้อมเหตุผล ไม่เดา `+1440` นาที เพราะจะทำให้ข้อมูลผิดโดยไม่มีใครรู้
+
+**ชั่วโมงงานปกติกับ OT ไม่นับซ้ำกัน** — ยึดสมการนี้เสมอ
+
+```
+workHours + otMinutes/60  =  (เวลาออก − เวลาเข้า) − เวลาพัก
+```
+
+จึงหัก "นาที OT ที่นับได้" ออกจาก `workHours` ไม่ใช่ตัดที่ `workEnd` ตรง ๆ
+(ถ้าตัดตรง ๆ แล้วทำเกิน 20 นาทีแต่ขั้นต่ำ OT คือ 30 เวลา 20 นาทีนั้นจะหายไปจากทั้งสองช่อง)
+
+**เพดานรายสัปดาห์นับจันทร์–อาทิตย์** (ISO) และยอดสะสมนับทั้ง `approved` และ `pending`
+ไม่งั้นระหว่างที่ใบค้างรออนุมัติ พนักงานจะทำทะลุเพดานไปได้
+
+**การทำงานวันหยุด** — ของเดิม `empCheckIn` ปฏิเสธวันหยุดทุกกรณี ตอนนี้ขึ้นกับนโยบาย
+
+```
+!allowHolidayWork     -> ปฏิเสธ  reason = 'holiday'
+holidayNeedsRequest   -> ต้องมีใบอนุมัติของวันนั้น ไม่งั้น reason = 'holiday_needs_request'
+ผ่าน                   -> เช็คอินได้ · dayType = 'วันหยุด' · ไม่นับ "มาสาย"
+```
+
+**ใบขอทำงานวันหยุด (`kind = 'holiday_work'`) ยื่นได้ทุกโหมด ยกเว้น `off`** —
+ต่างจากใบ OT ปกติที่ยื่นได้เฉพาะโหมด `request_*` ถ้าไม่ทำแบบนี้
+โหมด `auto`/`admin_only` + `holidayNeedsRequest` จะเป็นทางตัน เพราะพนักงานหาทางสร้างใบไม่ได้เลย
+
+**รายงานนับเฉพาะ `otStatus = 'approved'`** ส่วน `pending` แยกคอลัมน์ ห้ามรวมกัน —
+ทั้งรายงานรายวัน รายงานเดือน ไฟล์ Excel และเมนู "รายงาน OT" (ตัวที่ส่งต่อระบบเงินเดือน)
+
+---
+
 ## 5. ทำอย่างไรถึงไม่ต้องแก้ UI
 
 โค้ดหน้าเว็บเดิมคุยกับ backend ผ่านจุดเดียว:
@@ -516,7 +590,7 @@ shim ยัง **แทรกขั้นตอนยืนยันตัวต
 | พนักงาน | `listEmployees`, `saveEmployee`, `deleteEmployee`, `setEmployeePassword`, `inviteEmployee` |
 | อุปกรณ์ / passkey | `listEmployeeDevices`, `revokeEmployeeDevice`, `setWebauthnExempt`, `listCheckinAudit` |
 | ลงเวลา | `listAttendance`, `manualCheckIn`, `manualCheckOut`, `editCheckOut` |
-| ฝั่งพนักงาน | `employeeContext`, `empCheckIn`, `empCheckOut`, `empSubmitLeave`, `empSubmitTimeEdit` |
+| ฝั่งพนักงาน | `employeeContext`, `empCheckIn`, `empCheckOut`, `empSubmitLeave`, `empSubmitTimeEdit`, `empUpdatePhoto` |
 | ลา | `listLeaves`, `decideLeave` |
 | แก้เวลา | `listTimeEdits`, `decideTimeEdit` |
 | วันหยุด | `listHolidays`, `saveHoliday`, `deleteHoliday`, `saveWeeklyOff` |
@@ -524,6 +598,8 @@ shim ยัง **แทรกขั้นตอนยืนยันตัวต
 | สิทธิ์การลา | `listLeaveAssignments`, `saveLeaveAssignments`, `leaveAssignSummary` |
 | แจ้งเตือน | `listNotifications`, `unreadCount`, `markNotificationsRead` |
 | รายงาน | `monthlyReport`, `dailyReport`, `exportMonthlyReportXlsx` |
+| OT (แอดมิน) | `getOtPolicy`, `saveOtPolicy`, `listOtRequests`, `decideOtRequest`, `decideOtRequests`, `adminCreateOt`, `otSummary` |
+| OT (พนักงาน) | `empSubmitOtRequest`, `empCancelOtRequest`, `empOtHistory` |
 
 สูตรคำนวณ (มาสาย / OT / ชั่วโมงงาน / โควตาลา / ประเภทวัน) ยกมาตรง ๆ จากสเปกข้อ 4
 ของ `TapTime-Master-Spec.md` ไม่มีการเปลี่ยนตรรกะ
@@ -540,11 +616,14 @@ shim ยัง **แทรกขั้นตอนยืนยันตัวต
 npm test
 ```
 
-รันชุดทดสอบ **149 ข้อ** บนฐานข้อมูลจำลองในหน่วยความจำที่โหลด **ข้อมูลจริงจาก TapTime.xlsx**
+รันชุดทดสอบ **215 ข้อ** บนฐานข้อมูลจำลองในหน่วยความจำที่โหลด **ข้อมูลจริงจาก TapTime.xlsx**
 (`test/fixture.json`) — ไม่ต้องต่อ Supabase
 
 ครอบคลุม:
-- สูตรคำนวณ มาสาย / OT / ชั่วโมงงาน — เทียบกับแถวจริง `AT-154005fb` (สาย 37 น., OT 2 น., 7.42 ชม.)
+- สูตรคำนวณ มาสาย / ชั่วโมงงาน — เทียบกับแถวจริง `AT-154005fb` (สาย 37 น., 7.42 ชม.)
+- **ระบบ OT ครบทุกกฎ** — 5 โหมด × 3 ประเภทวัน, ผ่อนผัน/ขั้นต่ำ/ปัดเศษ 3 แบบ/หักพัก/เพดาน 3 ระดับ,
+  กันกะข้ามคืน, ใบขอ–อนุมัติ–ยกเลิก, เช็คอินวันหยุด, และการันตีว่า
+  `ชั่วโมงงานปกติ + OT = เวลาที่อยู่จริง − เวลาพัก` (ไม่นับซ้ำ)
 - Haversine + การตรวจรัศมี GPS (`out_of_zone`)
 - การจำแนกประเภทวัน (ราชการ / ประจำสัปดาห์ / วันทำงาน) และ `weeklyOff = 0`
 - โควตาวันลาคงเหลือรายประเภท และเงื่อนไข `advanceDays`

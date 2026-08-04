@@ -1,0 +1,105 @@
+<script>
+/* ============ เมนู: รายงาน OT ============
+ *
+ * ตารางนี้คือตัวที่เอาไปส่งต่อระบบเงินเดือน
+ * นับ **เฉพาะที่อนุมัติแล้ว** ส่วนที่รออนุมัติแยกอีกคอลัมน์ ห้ามรวมกัน
+ */
+
+var OTR = { start:'', end:'', branchId:'' };
+
+function renderOtReport(){
+  if(!OTR.start){
+    var n=new Date();
+    OTR.start = n.getFullYear()+'-'+('0'+(n.getMonth()+1)).slice(-2)+'-01';
+    OTR.end   = todayStr();
+  }
+  $('content').innerHTML=
+    '<div class="page-title">รายงาน OT</div>'+
+    '<div class="page-sub">สรุปชั่วโมงล่วงเวลารายคน แยกตามประเภทวัน — '+
+      'ตัวเลขนี้คือตัวที่ส่งต่อให้ระบบเงินเดือน</div>'+
+    '<div class="card">'+
+      '<div class="toolbar">'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">ตั้งแต่วันที่</label>'+
+          '<input type="date" id="otr_s" value="'+esc(OTR.start)+'" style="max-width:170px"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">ถึงวันที่</label>'+
+          '<input type="date" id="otr_e" value="'+esc(OTR.end)+'" style="max-width:170px"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:12px">สาขา</label>'+
+          '<select id="otr_b" style="max-width:200px"><option value="">ทุกสาขา</option>'+
+          (BOOT.branches||[]).map(function(b){return '<option value="'+esc(b.branchId)+'">'+
+            esc(b.name)+'</option>';}).join('')+'</select></div>'+
+        '<button class="btn btn-dark" style="align-self:flex-end" onclick="loadOtReport()">แสดงรายงาน</button>'+
+        '<button class="btn btn-green" style="align-self:flex-end" onclick="copyOtReport()">'+
+          svgI('clipboard',{size:15})+' คัดลอกตาราง</button>'+
+      '</div>'+
+      '<div id="otrResult"><div class="spinner"></div></div>'+
+    '</div>';
+  loadOtReport();
+}
+
+function otrH(m){return Math.round((Math.max(0,Number(m)||0)/60)*100)/100;}
+
+function loadOtReport(){
+  var res=$('otrResult'); res.innerHTML=loadBox('กำลังสรุปชั่วโมง OT...',true);
+  OTR.start=$('otr_s').value; OTR.end=$('otr_e').value; OTR.branchId=$('otr_b').value;
+  run('otSummary',OTR).then(drawOtReport)
+    .catch(function(e){ res.innerHTML='<div class="empty">ผิดพลาด: '+esc(e.message||e)+'</div>'; });
+}
+
+function drawOtReport(r){
+  if(!r||!r.rows||!r.rows.length){
+    $('otrResult').innerHTML='<div class="empty">ไม่มีชั่วโมง OT ในช่วงวันที่นี้</div>'; return;
+  }
+  var body=r.rows.map(function(x,i){
+    return '<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td class="nm"><b>'+esc(x.empName)+'</b><div class="sub">'+
+        esc(branchName(x.branchId))+'</div></td>'+
+      '<td>'+x.days+'</td>'+
+      '<td>'+otrH(x.workdayMinutes)+'</td>'+
+      '<td>'+otrH(x.weekendMinutes)+'</td>'+
+      '<td>'+otrH(x.holidayMinutes)+'</td>'+
+      '<td><b>'+otrH(x.approvedMinutes)+'</b></td>'+
+      '<td'+(x.pendingMinutes?' style="color:var(--orange);font-weight:700"':'')+'>'+
+        (x.pendingMinutes?otrH(x.pendingMinutes):'-')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('otrResult').innerHTML=
+    '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">'+
+      stat('s-green',otrH(r.totalApproved),'ชั่วโมง OT (อนุมัติแล้ว)')+
+      stat('s-orange',otrH(r.totalPending),'ชั่วโมง OT (รออนุมัติ)')+
+      stat('s-gray',r.rows.length,'พนักงานที่มี OT')+
+    '</div>'+
+    '<div style="color:var(--muted);font-size:12.5px;margin:14px 0 10px">'+
+      'ช่วง '+esc(r.start)+' ถึง '+esc(r.end)+' · หน่วยเป็นชั่วโมง · '+
+      'คอลัมน์ "รออนุมัติ" ยังไม่ถูกนับในยอดรวม</div>'+
+    '<div style="overflow:auto"><table id="otrTable"><thead><tr>'+
+      '<th>ลำดับ</th><th class="nm">พนักงาน</th><th>จำนวนวัน</th>'+
+      '<th>วันทำงาน</th><th>วันหยุดสัปดาห์</th><th>วันหยุดราชการ</th>'+
+      '<th>รวม (อนุมัติแล้ว)</th><th>รออนุมัติ</th>'+
+    '</tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+/** คัดลอกเป็น TSV เอาไปวางใน Excel / Google Sheets ได้ทันที */
+function copyOtReport(){
+  var t=$('otrTable');
+  if(!t){ toast('ยังไม่มีข้อมูล'); return; }
+  var lines=[];
+  t.querySelectorAll('tr').forEach(function(tr){
+    var cells=[];
+    tr.querySelectorAll('th,td').forEach(function(c){
+      cells.push(String(c.innerText||'').replace(/\s*\n\s*/g,' ').trim());
+    });
+    lines.push(cells.join('\t'));
+  });
+  var txt=lines.join('\n');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast('คัดลอกตารางแล้ว');},
+      function(){toast('คัดลอกไม่สำเร็จ');});
+  } else {
+    var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta);
+    ta.select(); try{document.execCommand('copy');toast('คัดลอกตารางแล้ว');}
+    catch(e){toast('คัดลอกไม่สำเร็จ');} ta.remove();
+  }
+}
+</script>

@@ -122,10 +122,13 @@ window.addEventListener('load',function(){
  */
 function applyOtVisibility(){
   var off = !BOOT.otPolicy || BOOT.otPolicy.mode === 'off';
-  document.querySelectorAll('[data-tab="otapprove"]').forEach(function(n){
-    n.classList.toggle('hide', off);
+  ['otapprove','otreport'].forEach(function(tab){
+    document.querySelectorAll('[data-tab="'+tab+'"]').forEach(function(n){
+      n.classList.toggle('hide', off);
+    });
   });
-  if(off && CURRENT_TAB === 'otapprove') switchTab('dashboard');
+  if(off && (CURRENT_TAB === 'otapprove' || CURRENT_TAB === 'otreport'))
+    switchTab('dashboard');
 }
 function otEnabled(){ return !!(BOOT.otPolicy && BOOT.otPolicy.mode !== 'off'); }
 
@@ -153,7 +156,7 @@ function switchTab(tab){
   var fn=({dashboard:renderDashboard,employees:renderEmployees,attendance:renderAttendance,
     leaves:renderLeaves,settings:renderSettings,leavetypes:renderLeaveTypes,
     holidays:renderHolidays,report:renderReport,timeedits:renderTimeEdits,daily:renderDaily,
-    otpolicy:renderOtPolicy,otapprove:renderOtApprove})[tab];
+    otpolicy:renderOtPolicy,otapprove:renderOtApprove,otreport:renderOtReport})[tab];
   if(!fn) return;
 
   CURRENT_TAB=tab;

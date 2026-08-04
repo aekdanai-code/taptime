@@ -73,16 +73,34 @@ export async function monthlyReportData(params: any) {
 
   const rows = emps.map((e: any) => {
     const cells: any[] = [];
-    const sum = { present: 0, late: 0, absent: 0, leave: 0 };
+    // otMinutes = อนุมัติแล้วเท่านั้น · otPendingMinutes = ยังรออนุมัติ (ห้ามรวมกัน)
+    const sum = {
+      present: 0, late: 0, absent: 0, leave: 0,
+      otMinutes: 0, otPendingMinutes: 0,
+    };
     days.forEach((date) => {
       const dt = dayTypeOf(date, hmap, woff);
       let cell: any;
       if (dt.type !== 'work') {
-        cell = { status: 'holiday', label: 'หยุด' };
+        // ทำงานวันหยุดก็มี OT ได้ ต้องนับเข้ายอดด้วย
+        const hAtt = attIdx[e.empId + '|' + date];
+        if (hAtt) {
+          const m = Math.max(0, Number(hAtt.otMinutes) || 0);
+          if (String(hAtt.otStatus) === 'approved') sum.otMinutes += m;
+          else if (String(hAtt.otStatus) === 'pending') sum.otPendingMinutes += m;
+        }
+        cell = hAtt && hAtt.checkInTime
+          ? { status: 'otholiday', label: 'OT' }
+          : { status: 'holiday', label: 'หยุด' };
       } else if (date > todayStr) {
         cell = { status: 'future', label: '' };
       } else {
         const att = attIdx[e.empId + '|' + date];
+        if (att) {
+          const m = Math.max(0, Number(att.otMinutes) || 0);
+          if (String(att.otStatus) === 'approved') sum.otMinutes += m;
+          else if (String(att.otStatus) === 'pending') sum.otPendingMinutes += m;
+        }
         if (att && att.status === 'late') {
           cell = { status: 'late', label: 'สาย' };
           sum.late++;
@@ -168,6 +186,8 @@ export async function dailyReport(params: any) {
       const wh =
         att && att.workHours !== '' && att.workHours != null ? att.workHours : '';
       const late = att && att.lateMinutes ? Number(att.lateMinutes) : 0;
+      const otStatus = att ? String(att.otStatus || 'none') : 'none';
+      const otMin = att ? Math.max(0, Number(att.otMinutes) || 0) : 0;
 
       if (att && att.checkInTime) {
         if (att.status === 'late') {
@@ -207,6 +227,11 @@ export async function dailyReport(params: any) {
         checkOut: co,
         workHours: wh,
         lateMinutes: late,
+        // นับได้จริง (อนุมัติแล้ว) กับที่รออนุมัติ แยกคนละช่อง
+        otMinutes: otStatus === 'approved' ? otMin : 0,
+        otPendingMinutes: otStatus === 'pending' ? otMin : 0,
+        otStatus,
+        otDayType: att ? att.otDayType || '' : '',
       };
     });
 
@@ -217,9 +242,12 @@ export async function dailyReport(params: any) {
 
   const sum: Record<string, number> = {
     present: 0, late: 0, leave: 0, absent: 0, holiday: 0,
+    otMinutes: 0, otPendingMinutes: 0,
   };
   rows.forEach((r: any) => {
-    if (sum[r.status] != null) sum[r.status]++;
+    if (sum[r.status] != null && r.status !== 'otMinutes') sum[r.status]++;
+    sum.otMinutes += r.otMinutes;
+    sum.otPendingMinutes += r.otPendingMinutes;
   });
 
   return { date, isHoliday, holidayName: dt.name || '', rows, sum };
@@ -242,20 +270,26 @@ export async function exportMonthlyReportXlsx(params: any) {
     const dow = new Date(ds + 'T00:00:00Z').getUTCDay();
     head.push(+p[2] + ' ' + wd[dow]);
   });
-  head.push('ปกติ', 'สาย', 'ลา', 'ขาด');
+  head.push('ปกติ', 'สาย', 'ลา', 'ขาด', 'OT (ชม.)', 'OT รออนุมัติ (ชม.)');
 
   const aoa: any[][] = [head];
   d.rows.forEach((r: any) => {
     const line: any[] = [r.name];
     r.cells.forEach((c: any) => line.push(c.label || ''));
-    line.push(r.sum.present, r.sum.late, r.sum.leave, r.sum.absent);
+    const h2 = (m: number) => Math.round((Math.max(0, m || 0) / 60) * 100) / 100;
+    line.push(
+      r.sum.present, r.sum.late, r.sum.leave, r.sum.absent,
+      h2(r.sum.otMinutes), h2(r.sum.otPendingMinutes)
+    );
     aoa.push(line);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   // ตรึงแถวหัว + คอลัมน์ชื่อ (เหมือน setFrozenRows/Columns เดิม)
   (ws as any)['!freeze'] = { xSplit: 1, ySplit: 1 };
-  (ws as any)['!cols'] = head.map((_, i) => ({ wch: i === 0 ? 22 : 7 }));
+  (ws as any)['!cols'] = head.map((_, i) => ({
+    wch: i === 0 ? 22 : i >= head.length - 2 ? 16 : 7,
+  }));
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'รายงาน');

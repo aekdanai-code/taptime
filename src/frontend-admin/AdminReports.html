@@ -23,11 +23,15 @@ function renderReport(){
       '<div class="legend">'+
         leg('c-present','ปกติ')+leg('c-late','สาย')+leg('c-leave','ลา (แสดงประเภท)')+
         leg('c-absent','ขาด')+leg('c-holiday','วันหยุด')+
+        (otEnabled()?leg('c-otholiday','ทำงานวันหยุด (OT)'):'')+
       '</div>'+
       '<div id="repResult"><div class="spinner"></div></div>'+
     '</div>';
   loadReport();
 }
+/** นาที -> ชั่วโมงทศนิยม 2 ตำแหน่ง */
+function repH(m){return Math.round((Math.max(0,Number(m)||0)/60)*100)/100;}
+
 function leg(cls,label){return '<span><i class="'+cls.replace("c-","lg-")+'"></i>'+label+'</span>';}
 
 function reportParams(){
@@ -75,7 +79,8 @@ function drawReport(r){
     head+='<th title="'+ds+'">'+(+p[2])+'<br><span style="font-weight:400;color:var(--muted)">'+wd[dow]+'</span></th>';
   });
   head+='<th class="sumcol">ปกติ</th><th class="sumcol">สาย</th>'+
-        '<th class="sumcol">ลา</th><th class="sumcol">ขาด</th></tr>';
+        '<th class="sumcol">ลา</th><th class="sumcol">ขาด</th>'+
+        (otEnabled()?'<th class="sumcol">OT (ชม.)</th>':'')+'</tr>';
 
   var body=r.rows.map(function(row){
     var tds=row.cells.map(function(c){
@@ -85,7 +90,13 @@ function drawReport(r){
       '<td class="sumcol">'+row.sum.present+'</td>'+
       '<td class="sumcol">'+row.sum.late+'</td>'+
       '<td class="sumcol">'+row.sum.leave+'</td>'+
-      '<td class="sumcol" style="color:var(--red)">'+row.sum.absent+'</td></tr>';
+      '<td class="sumcol" style="color:var(--red)">'+row.sum.absent+'</td>'+
+      (otEnabled()
+        ? '<td class="sumcol" title="รออนุมัติ '+repH(row.sum.otPendingMinutes)+' ชม.">'+
+          repH(row.sum.otMinutes)+
+          (row.sum.otPendingMinutes?'<span style="color:var(--orange)">+'+
+            repH(row.sum.otPendingMinutes)+'</span>':'')+'</td>'
+        : '')+'</tr>';
   }).join('');
 
   $('repResult').innerHTML=

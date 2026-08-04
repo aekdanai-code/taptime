@@ -24,6 +24,10 @@ function renderDaily(){
     '</div>';
   loadDaily();
 }
+/** นาที -> "H:MM ชม." */
+function dHm(m){m=Math.max(0,Math.round(Number(m)||0));
+  return Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+' ชม.';}
+
 function dleg(color,label){return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">'+
   '<i style="display:inline-block;width:12px;height:12px;border-radius:4px;background:var(--'+color+')"></i>'+
   esc(label)+'</span>';}
@@ -60,6 +64,11 @@ function drawDaily(r){
       '<td>'+(row.workHours!==''&&row.workHours!=null?esc(row.workHours)+' ชม.':'-')+'</td>'+
       '<td'+(row.lateMinutes>0?' style="color:var(--orange);font-weight:700"':'')+'>'+
         (row.lateMinutes>0?row.lateMinutes+' นาที':'-')+'</td>'+
+      (otEnabled()
+        ? '<td>'+(row.otMinutes?'<b>'+dHm(row.otMinutes)+'</b>':'-')+
+          (row.otPendingMinutes?' <span class="tag t-orange">รอ '+dHm(row.otPendingMinutes)+'</span>':'')+
+          '</td>'
+        : '')+
     '</tr>';
   }).join('');
 
@@ -67,10 +76,14 @@ function drawDaily(r){
     '<div style="color:var(--muted);font-size:12.5px;margin-bottom:10px">'+
       esc(r.date)+(r.isHoliday?' · <b style="color:var(--blue)">วันหยุด'+(r.holidayName?' — '+esc(r.holidayName):'')+'</b>':'')+
       ' · พนักงาน '+r.rows.length+' คน · '+
-      'ปกติ '+(s.present||0)+' · มาสาย '+(s.late||0)+' · ลา '+(s.leave||0)+' · ขาด '+(s.absent||0)+'</div>'+
+      'ปกติ '+(s.present||0)+' · มาสาย '+(s.late||0)+' · ลา '+(s.leave||0)+' · ขาด '+(s.absent||0)+
+      (otEnabled()&&(s.otMinutes||s.otPendingMinutes)
+        ? ' · OT '+dHm(s.otMinutes||0)+(s.otPendingMinutes?' (รออนุมัติ '+dHm(s.otPendingMinutes)+')':'')
+        : '')+'</div>'+
     '<div style="overflow:auto"><table><thead><tr>'+
       '<th class="nm">ชื่อพนักงาน</th><th>ตำแหน่ง</th><th>วันที่</th><th>สถานะ</th>'+
       '<th>เวลาเข้า</th><th>เวลาออก</th><th>ชั่วโมงทำงาน</th><th>มาสาย (นาที)</th>'+
+      (otEnabled()?'<th>OT (นับได้)</th>':'')+
     '</tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 </script>

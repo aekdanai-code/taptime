@@ -45,7 +45,7 @@ function loadAtt(){
           '<td>'+(a.checkInTime||'-')+'</td>'+
           '<td>'+(a.lateMinutes?a.lateMinutes+' นาที':'-')+'</td>'+
           '<td>'+(a.checkOutTime||'-')+'</td>'+
-          '<td>'+(a.otMinutes?a.otMinutes+' นาที':'0 นาที')+'</td>'+
+          '<td>'+otCell(a)+'</td>'+
           '<td>'+attTag(a.status)+'</td>'+
           '<td>'+attActions(a)+'</td>'+
         '</tr>';
@@ -69,13 +69,60 @@ function loadAtt(){
             chip('all','ทั้งหมด')+chip('ontime','ปกติ')+chip('late','สาย')+chip('notyet','ยังไม่มา')+
           '</div>'+
           '<div style="overflow:auto"><table><thead><tr><th>ลำดับ</th><th>ชื่อ</th><th>วันที่</th>'+
-          '<th>ประเภทวัน</th><th>เวลาเข้า</th><th>สาย</th><th>เวลาออก</th><th>OT</th>'+
+          '<th>ประเภทวัน</th><th>เวลาเข้า</th><th>สาย</th><th>เวลาออก</th>'+
+          (otEnabled()?'<th>OT (ดิบ / นับได้)</th>':'')+
           '<th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+
-          (rows||'<tr><td colspan="10" class="empty">ไม่มีรายการ</td></tr>')+
+          (rows||'<tr><td colspan="'+(otEnabled()?10:9)+'" class="empty">ไม่มีรายการ</td></tr>')+
           '</tbody></table></div>'+
         '</div>';
     });
   });
+}
+
+/* ช่อง OT: ดิบ / นับได้ + สถานะ + ปุ่มคีย์ให้ (โหมด admin_only)
+ * ปิดระบบ OT อยู่ -> คืนค่าว่าง (คอลัมน์ถูกซ่อนไปแล้ว)
+ */
+function otCell(a){
+  if(!otEnabled()) return '';
+  var raw=Number(a.otMinutesRaw||0), got=Number(a.otMinutes||0);
+  var st=String(a.otStatus||'none');
+  var tag={approved:'<span class="tag t-green">นับแล้ว</span>',
+           pending:'<span class="tag t-orange">รออนุมัติ</span>',
+           rejected:'<span class="tag t-red">ปฏิเสธ</span>'}[st]||'';
+  var mode=(BOOT.otPolicy||{}).mode;
+  var btn = (mode==='admin_only' && a.checkOutTime && !got)
+    ? ' <span class="btn btn-sm btn-ghost" onclick="openAdminOt(\''+esc(a.empId)+'\',\''+
+      esc(a.date)+'\')">คีย์ OT</span>' : '';
+  if(!raw && !got) return '<span style="color:var(--muted)">-</span>'+btn;
+  return '<span style="color:var(--muted)">'+raw+'</span> / <b>'+got+'</b> นาที '+tag+btn;
+}
+
+/* แอดมินคีย์ OT ให้พนักงาน */
+function openAdminOt(empId,date){
+  openModal('<h3>บันทึก OT ให้พนักงาน</h3>'+
+    '<div class="f-row">'+
+      fld('วันที่',true,'<input type="date" id="aot_d" value="'+esc(date)+'">')+
+      fld('ประเภท',false,'<select id="aot_k">'+
+        '<option value="after_shift">หลังเลิกงาน</option>'+
+        '<option value="before_shift">ก่อนเข้างาน</option>'+
+        '<option value="holiday_work">ทำงานวันหยุด</option></select>')+
+    '</div>'+
+    '<div class="f-row">'+
+      fld('เวลาเริ่ม',false,'<input type="time" id="aot_s" value="'+
+        esc((((BOOT.branches||[])[0]||{}).workEnd)||'17:00')+'">')+
+      fld('เวลาสิ้นสุด',false,'<input type="time" id="aot_e" value="20:00">')+
+    '</div>'+
+    fld('หรือระบุจำนวนนาทีโดยตรง',false,'<input type="number" id="aot_m" min="0" placeholder="เว้นว่างถ้ากรอกเวลาแล้ว">')+
+    fld('เหตุผล',false,'<input id="aot_r" placeholder="เช่น ลืมเช็คเอาท์">')+
+    '<div class="actions"><span class="btn btn-ghost" onclick="closeModal()">ยกเลิก</span>'+
+    '<button class="btn btn-dark" onclick="saveAdminOt(\''+esc(empId)+'\')">บันทึก</button></div>');
+}
+function saveAdminOt(empId){
+  run('adminCreateOt',{empId:empId,date:$('aot_d').value,kind:$('aot_k').value,
+    start:$('aot_s').value,end:$('aot_e').value,
+    minutes:$('aot_m').value,reason:$('aot_r').value.trim()})
+    .then(function(){ closeModal(); toast('บันทึก OT แล้ว'); loadAtt(); })
+    .catch(function(e){ toast(e.message||e); });
 }
 
 function chip(v,label){return '<div class="chip'+(window._attFilter===v?' active':'')+
